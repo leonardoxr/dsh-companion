@@ -3,7 +3,7 @@
 [![CI](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A small, backend-only [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that gives native clients a read-only JSON view of DSH workspaces and live sessions plus a configurable notification event feed.
+A small [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that gives native clients a read-only JSON view of DSH workspaces and live sessions, a configurable notification event feed, and a Web settings card.
 
 It is designed for client shells such as [dsh-native](https://github.com/leonardoxr/dsh-native) that need project and session metadata without loading or scraping the Harness web UI.
 
@@ -14,7 +14,7 @@ It is designed for client shells such as [dsh-native](https://github.com/leonard
 
 - Three small, cache-free JSON endpoints for workspaces and live sessions.
 - A reconnectable server-sent-event feed for native completion, failure, question, and approval alerts.
-- Harness plugin settings that filter alert kinds and subagent events at the source.
+- A **Settings → Plugins → DSH Companion notifications** card that filters alert kinds and subagent events at the source.
 - Explicit field projection: internal Harness objects are never serialized wholesale.
 - DSH trusted-host and same-origin checks on every request.
 - An installable DSH bundle with compiled JavaScript and a small settings-schema dependency.
@@ -83,7 +83,7 @@ JSON responses use `Content-Type: application/json` and all routes use `Cache-Co
 
 ## Notification settings
 
-The Harness plugin settings page exposes these options under **Native notification forwarding**:
+Open **Settings → Plugins → DSH Companion notifications** in the Harness Web UI to configure:
 
 | Setting | Default | Alert |
 |---|---:|---|
@@ -96,7 +96,7 @@ The Harness plugin settings page exposes these options under **Native notificati
 | `approvals` | on | Pending tool approvals |
 | `subagents` | off | Include events from sessions marked as subagents |
 
-Changing these settings reapplies the plugin and restarts its bounded event feed. Disabling the plugin itself remains the Cordis loader's responsibility.
+Changes are persisted through the Harness settings service and apply immediately to subsequent events without restarting the companion feed. **Reset defaults** clears the user overrides and restores the values above.
 
 Each notification payload is versioned and contains only a stable key, kind, session ID/title, short body, and timestamp. Raw messages, tool arguments, commands, icons, and click-through URLs are never forwarded.
 
@@ -108,9 +108,9 @@ Do not expose the DSH server to networks whose clients should not read that meta
 
 ## How it works
 
-The package is a plain Cordis module with `name`, `Config`, `inject`, and `apply` exports. It declares `webServer`, `webRuntime`, `apiProxy`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, then registers its routes and consumes the host's existing event streams when the bundle loads.
+The package is a Cordis host module with `name`, `Config`, `inject`, and `apply` exports plus a small Web client plugin. The host declares `webServer`, `webRuntime`, `apiProxy`, `settings`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, registers a durable notification-settings namespace, then consumes the existing event streams when the bundle loads.
 
-Harness capabilities arrive through injected Cordis services. The only runtime import is the Harness-compatible Schemastery package used to render and normalize plugin settings; TypeScript emits the installable entry point to `dist/index.js`. Unloading or reconfiguring the plugin aborts event subscriptions, closes SSE clients, and removes every route.
+The host entry point is emitted to `dist/index.js`; the settings card is bundled to `client/client.js` and injected into the standard plugin-settings slot. Unloading or reconfiguring the host plugin aborts event subscriptions, closes SSE clients, and removes every route.
 
 ## Compatibility
 

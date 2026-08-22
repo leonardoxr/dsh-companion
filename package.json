@@ -10,14 +10,16 @@
     ".": {
       "types": "./dist/index.d.ts",
       "default": "./dist/index.js"
-    }
+    },
+    "./client": "./client/client.js"
   },
   "files": [
     "dist/",
+    "client/",
     "cordis.patch.yml"
   ],
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
+    "build": "node -e \"for (const dir of ['dist', 'client']) require('node:fs').rmSync(dir, { recursive: true, force: true })\" && tsc -p tsconfig.json && tsc -p tsconfig.client.json --noEmit && tsdown && node scripts/normalize-client-banner.mjs",
     "test": "npm run build && node --test",
     "prepack": "npm test"
   },
@@ -43,12 +45,29 @@
     "url": "https://github.com/leonardoxr/dsh-companion/issues"
   },
   "devDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/dsh-client-connection": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-runtime": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings": "^0.1.1-rc.2",
+    "@deepseek-ai/dsh-client-ui-settings-plugins": "^0.1.1-rc.2",
     "@types/node": "^24.13.3",
+    "@types/react": "~18.3.0",
+    "react": "^18.3.1",
+    "tsdown": "^0.22.14",
     "typescript": "^7.0.2"
   },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-connection",
+        "@deepseek-ai/dsh-client-runtime",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-settings-plugins"
+      ]
     }
   },
   "dependencies": {

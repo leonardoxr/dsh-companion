@@ -3,7 +3,7 @@ import { EventEmitter } from 'node:events'
 import { readFile } from 'node:fs/promises'
 import test from 'node:test'
 
-import { apply, Config, inject, name } from '../dist/index.js'
+import { apply, Config, inject, name, SETTINGS_NAMESPACE } from '../dist/index.js'
 
 function responseRecorder() {
   return {
@@ -101,6 +101,7 @@ function createHarness(sessionOverrides = {}) {
     seq: 2,
   }
   const sessions = new Map([[session.id, session], [subagent.id, subagent]])
+  const settingsRegistrations = []
   const ctx = {
     webServer: {
       register(route) {
@@ -113,6 +114,13 @@ function createHarness(sessionOverrides = {}) {
       events: {
         mux: (...args) => mux.open(...args),
         host: (...args) => host.open(...args),
+      },
+    },
+    settings: {
+      register(namespace, schema, options) {
+        const registration = { namespace, schema, value: options.base }
+        settingsRegistrations.push(registration)
+        return { get: () => registration.value }
       },
     },
     sessions: {
@@ -133,7 +141,7 @@ function createHarness(sessionOverrides = {}) {
       }],
     },
   }
-  return { ctx, disposed: () => disposed, host, mux, routes, session }
+  return { ctx, disposed: () => disposed, host, mux, routes, session, settingsRegistrations }
 }
 
 const tick = () => new Promise(resolve => setImmediate(resolve))
@@ -142,8 +150,14 @@ test('package entry point and settings schema are compiled', async () => {
   const pkg = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'))
   assert.equal(pkg.main, './dist/index.js')
   assert.equal(pkg.exports['.'].default, './dist/index.js')
+  assert.equal(pkg.exports['./client'], './client/client.js')
+  assert.equal(pkg.dsh.client.platform, 'web')
+  const client = await readFile(new URL('../client/client.js', import.meta.url), 'utf8')
+  assert.match(client, /^window\.__ModuleLoader__\.load\(\{ id: \"dsh-companion\"/)
+  assert.match(client, /companion-notifications/)
   assert.equal(name, 'dsh-companion')
-  assert.deepEqual(inject, ['webServer', 'webRuntime', 'apiProxy', 'sessions', 'sessionTitle', 'workspaceRegistry'])
+  assert.deepEqual(inject, ['webServer', 'webRuntime', 'apiProxy', 'settings', 'sessions', 'sessionTitle', 'workspaceRegistry'])
+  assert.equal(SETTINGS_NAMESPACE, 'companion-notifications')
   assert.deepEqual(Config({}), {
     notifications: {
       completed: true,
@@ -162,6 +176,7 @@ test('compiled plugin registers working read-only routes and disposes them', asy
   const harness = createHarness()
   const dispose = apply(harness.ctx)
   assert.equal(harness.routes.length, 4)
+  assert.equal(harness.settingsRegistrations[0].namespace, SETTINGS_NAMESPACE)
 
   const sessionsRoute = harness.routes.find(route => route.path === '/api/companion/sessions')
   const sessionsResponse = responseRecorder()
@@ -341,5 +356,17 @@ test('notification settings filter completed turns and can include subagents', a
 
   assert.deepEqual(notifications(response).map(item => item.kind), ['blocked'])
   assert.equal(notifications(response)[0].title, 'Child task')
+
+  harness.settingsRegistrations[0].value = {
+    ...harness.settingsRegistrations[0].value,
+    completed: true,
+  }
+  harness.mux.push('main-turn-enabled', {
+    type: 'session/event',
+    sessionId: harness.session.id,
+    event: { type: 'turn/end', seq: 9, time: 3, data: { reason: { kind: 'completed' } } },
+  })
+  await tick()
+  assert.deepEqual(notifications(response).map(item => item.kind), ['blocked', 'completed'])
   dispose()
 })

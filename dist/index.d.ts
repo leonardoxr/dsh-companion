@@ -53,6 +53,13 @@ interface CompanionContext {
     apiProxy: {
         events: EventStreamsLike;
     };
+    settings: {
+        register<T>(namespace: string, schema: z<T>, options: {
+            base: T;
+        }): {
+            get(): T;
+        };
+    };
     sessions: {
         list(): SessionLike[];
         get(id: string): SessionLike | undefined;
@@ -89,9 +96,11 @@ export interface NotificationConfig {
 export interface Config {
     notifications: NotificationConfig;
 }
+export declare const SETTINGS_NAMESPACE = "companion-notifications";
+export declare const NotificationSettings: z<NotificationConfig>;
 export declare const Config: z<Config>;
 export declare const name = "dsh-companion";
-export declare const inject: readonly ['webServer', 'webRuntime', 'apiProxy', 'sessions', 'sessionTitle', 'workspaceRegistry'];
+export declare const inject: readonly ['webServer', 'webRuntime', 'apiProxy', 'settings', 'sessions', 'sessionTitle', 'workspaceRegistry'];
 export type NotificationKind = 'completed' | 'blocked' | 'error' | 'max-tokens' | 'aborted' | 'question' | 'approval';
 export interface CompanionNotification {
     version: 1;

@@ -18,20 +18,22 @@ const defaultNotifications = {
     approvals: true,
     subagents: false,
 };
+export const SETTINGS_NAMESPACE = 'companion-notifications';
+export const NotificationSettings = z.object({
+    completed: z.boolean().default(true).description('Notify when a turn completes successfully.'),
+    blocked: z.boolean().default(true).description('Notify when an agent reports that it is blocked.'),
+    errors: z.boolean().default(true).description('Notify for failed turns and live agent errors.'),
+    maxTokens: z.boolean().default(true).description('Notify when a turn reaches its output-token limit.'),
+    aborted: z.boolean().default(false).description('Notify when a turn is cancelled or aborted.'),
+    questions: z.boolean().default(true).description('Notify when ask_user_question needs an answer.'),
+    approvals: z.boolean().default(true).description('Notify when a tool action needs approval.'),
+    subagents: z.boolean().default(false).description('Include alerts from subagent sessions.'),
+});
 export const Config = z.object({
-    notifications: z.object({
-        completed: z.boolean().default(true).description('Notify when a turn completes successfully.'),
-        blocked: z.boolean().default(true).description('Notify when an agent reports that it is blocked.'),
-        errors: z.boolean().default(true).description('Notify for failed turns and live agent errors.'),
-        maxTokens: z.boolean().default(true).description('Notify when a turn reaches its output-token limit.'),
-        aborted: z.boolean().default(false).description('Notify when a turn is cancelled or aborted.'),
-        questions: z.boolean().default(true).description('Notify when ask_user_question needs an answer.'),
-        approvals: z.boolean().default(true).description('Notify when a tool action needs approval.'),
-        subagents: z.boolean().default(false).description('Include alerts from subagent sessions.'),
-    }).default(defaultNotifications).description('Native notification forwarding'),
+    notifications: NotificationSettings.default(defaultNotifications).description('Native notification forwarding'),
 });
 export const name = 'dsh-companion';
-export const inject = ['webServer', 'webRuntime', 'apiProxy', 'sessions', 'sessionTitle', 'workspaceRegistry'];
+export const inject = ['webServer', 'webRuntime', 'apiProxy', 'settings', 'sessions', 'sessionTitle', 'workspaceRegistry'];
 const MAX_TITLE = 120;
 const MAX_BODY = 320;
 const REPLAY_LIMIT = 128;
@@ -217,7 +219,9 @@ function encodeReady(cursor) {
     return `id: ${cursor}\nevent: ready\ndata: {"version":1}\n\n`;
 }
 export function apply(ctx, config = { notifications: defaultNotifications }) {
-    const notificationConfig = config.notifications ?? defaultNotifications;
+    const notificationSettings = ctx.settings.register(SETTINGS_NAMESPACE, NotificationSettings, {
+        base: config.notifications ?? defaultNotifications,
+    });
     const instanceId = randomUUID();
     const clients = new Set();
     const replay = [];
@@ -411,6 +415,7 @@ export function apply(ctx, config = { notifications: defaultNotifications }) {
     heartbeat.unref?.();
     const handleMux = (envelope) => {
         const frame = envelope.payload;
+        const notificationConfig = notificationSettings.get();
         const sessionId = text(frame.sessionId);
         if (sessionId !== undefined && !includesSession(ctx, notificationConfig, sessionId))
             return;
@@ -454,6 +459,7 @@ export function apply(ctx, config = { notifications: defaultNotifications }) {
         }
     };
     const handleHost = (envelope) => {
+        const notificationConfig = notificationSettings.get();
         const frame = envelope.payload;
         if (frame.type !== 'host/agent-error' || !notificationConfig.errors)
             return;
