@@ -3,7 +3,7 @@
 [![CI](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-A small, backend-only [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that gives native clients a read-only JSON view of DSH workspaces and live sessions.
+A small, backend-only [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that gives native clients a read-only JSON view of DSH workspaces and live sessions plus a configurable notification event feed.
 
 It is designed for client shells such as [dsh-native](https://github.com/leonardoxr/dsh-native) that need project and session metadata without loading or scraping the Harness web UI.
 
@@ -13,9 +13,11 @@ It is designed for client shells such as [dsh-native](https://github.com/leonard
 ## What it provides
 
 - Three small, cache-free JSON endpoints for workspaces and live sessions.
+- A reconnectable server-sent-event feed for native completion, failure, question, and approval alerts.
+- Harness plugin settings that filter alert kinds and subagent events at the source.
 - Explicit field projection: internal Harness objects are never serialized wholesale.
 - DSH trusted-host and same-origin checks on every request.
-- An installable DSH bundle with compiled JavaScript and no runtime dependencies.
+- An installable DSH bundle with compiled JavaScript and a small settings-schema dependency.
 - Clean unloading: all registered routes are removed with the plugin.
 
 ## Install
@@ -60,6 +62,7 @@ curl http://127.0.0.1:3080/api/companion/workspaces
 | `GET /api/companion/workspaces` | `{ workspaces: [...] }` — durable workspaces and their member session IDs |
 | `GET /api/companion/sessions` | `{ sessions: [...] }` — live sessions and their latest folded titles |
 | `GET /api/companion/session/<id>` | One live-session summary, or a JSON `404` |
+| `GET /api/companion/notifications` | `text/event-stream` feed of configured native alerts |
 
 Example session-list response:
 
@@ -76,19 +79,38 @@ Example session-list response:
 }
 ```
 
-All responses use `Content-Type: application/json` and `Cache-Control: no-store`. Non-`GET` requests return `405`.
+JSON responses use `Content-Type: application/json` and all routes use `Cache-Control: no-store`. The notification route uses SSE, emits 15-second heartbeats, accepts a prior cursor in `Last-Event-ID` or `?since=`, and keeps a bounded in-memory replay window. A fresh connection starts at the live tail but receives interactions that are still waiting for a question answer or approval. Non-`GET` requests return `405`.
+
+## Notification settings
+
+The Harness plugin settings page exposes these options under **Native notification forwarding**:
+
+| Setting | Default | Alert |
+|---|---:|---|
+| `completed` | on | Successful `turn/end` events |
+| `blocked` | on | Blocked turns |
+| `errors` | on | Failed turns and live agent errors |
+| `maxTokens` | on | Turns that reach the output-token limit |
+| `aborted` | off | Cancelled or aborted turns |
+| `questions` | on | Pending `ask_user_question` interactions |
+| `approvals` | on | Pending tool approvals |
+| `subagents` | off | Include events from sessions marked as subagents |
+
+Changing these settings reapplies the plugin and restarts its bounded event feed. Disabling the plugin itself remains the Cordis loader's responsibility.
+
+Each notification payload is versioned and contains only a stable key, kind, session ID/title, short body, and timestamp. Raw messages, tool arguments, commands, icons, and click-through URLs are never forwarded.
 
 ## Security model
 
-The endpoints expose workspace paths, session IDs, titles, timestamps, and session lineage. They enforce the Harness web runtime's `trustedHosts` policy and reject cross-site browser requests, but **this is a network trust boundary, not user authentication**.
+The endpoints expose workspace paths, session IDs, titles, timestamps, session lineage, and—when enabled—short question, approval, and error text. They enforce the Harness web runtime's `trustedHosts` policy and reject cross-site browser requests, but **this is a network trust boundary, not user authentication**.
 
 Do not expose the DSH server to networks whose clients should not read that metadata. See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
 
 ## How it works
 
-The package is a plain Cordis module with `name`, `inject`, and `apply` exports. It declares `webServer`, `webRuntime`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, then registers its routes when the bundle loads.
+The package is a plain Cordis module with `name`, `Config`, `inject`, and `apply` exports. It declares `webServer`, `webRuntime`, `apiProxy`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, then registers its routes and consumes the host's existing event streams when the bundle loads.
 
-The plugin imports nothing from Harness at runtime. All capabilities arrive through injected Cordis services, and TypeScript emits the installable entry point to `dist/index.js`.
+Harness capabilities arrive through injected Cordis services. The only runtime import is the Harness-compatible Schemastery package used to render and normalize plugin settings; TypeScript emits the installable entry point to `dist/index.js`. Unloading or reconfiguring the plugin aborts event subscriptions, closes SSE clients, and removes every route.
 
 ## Compatibility
 

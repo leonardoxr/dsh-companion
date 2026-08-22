@@ -1,25 +1,14 @@
 /**
  * dsh-companion — an out-of-tree DeepSeek Harness plugin.
  *
- * Registers read-only JSON routes on the harness webserver so a native client
- * shell (for example the dsh-native Electron app) can render workspaces and
- * sessions without booting the full web UI:
- *
- *   GET /api/companion/workspaces        → { workspaces: [...] }
- *   GET /api/companion/sessions          → { sessions: [...] }
- *   GET /api/companion/session/<id>      → summary or 404
- *
- * The plugin ships as a dsh bundle (see README.md): install it into a
- * profile with `dsh plugin --profile <name> add`. It
- * imports nothing at runtime from the harness: every capability arrives
- * through injected Cordis services, and the node:http types below are
- * type-only. Unloading the plugin removes its routes.
+ * Provides small read-only workspace/session JSON projections and a filtered
+ * server-sent-event feed for trusted native shells. Harness objects and raw
+ * conversation events never cross the companion boundary.
  * @module dsh-companion
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
-/** Handler shape the harness webserver accepts. */
+import z from '@deepseek-ai/schemastery';
 type RouteHandler = (req: IncomingMessage, res: ServerResponse) => void | Promise<void>;
-/** Minimal structural view of the webserver service this plugin consumes. */
 interface WebServerLike {
     register(route: {
         kind: 'exact' | 'prefix';
@@ -27,24 +16,42 @@ interface WebServerLike {
         handler: RouteHandler;
     }): () => void;
 }
-/** Session header facts this plugin projects. */
 interface SessionHeaderLike {
     createdAt: number;
     cwd?: string;
     parentSession?: string;
     origin?: 'subagent';
 }
-/** Minimal structural view of a harness session. */
 interface SessionLike {
     id: string;
     header: SessionHeaderLike;
     seq: number;
 }
-/** Minimal structural view of the services this plugin consumes. */
+interface ApiFrame {
+    type: string;
+    [key: string]: unknown;
+}
+interface RpcEnvelope {
+    rpcId: string;
+    payload: ApiFrame;
+}
+interface EventStreamsLike {
+    mux(request: {
+        rpcId: string;
+        payload: Record<string, never>;
+    }, signal: AbortSignal): AsyncIterable<RpcEnvelope>;
+    host(request: {
+        rpcId: string;
+        payload: Record<string, never>;
+    }, signal: AbortSignal): AsyncIterable<RpcEnvelope>;
+}
 interface CompanionContext {
     webServer: WebServerLike;
     webRuntime: {
         trustedHosts: readonly string[];
+    };
+    apiProxy: {
+        events: EventStreamsLike;
     };
     sessions: {
         list(): SessionLike[];
@@ -65,16 +72,35 @@ interface CompanionContext {
             sessionIds: readonly string[];
         }>;
     };
+    logger?: {
+        warn(message: string, ...args: unknown[]): void;
+    };
 }
-/** Cordis plugin name. */
+export interface NotificationConfig {
+    completed: boolean;
+    blocked: boolean;
+    errors: boolean;
+    maxTokens: boolean;
+    aborted: boolean;
+    questions: boolean;
+    approvals: boolean;
+    subagents: boolean;
+}
+export interface Config {
+    notifications: NotificationConfig;
+}
+export declare const Config: z<Config>;
 export declare const name = "dsh-companion";
-/** Services required before apply runs. */
-export declare const inject: readonly ['webServer', 'webRuntime', 'sessions', 'sessionTitle', 'workspaceRegistry'];
-/**
- * Plugin entry point. Registers the three companion routes and returns their
- * combined disposer, so unloading withdraws every route together.
- * @param ctx - Cordis context carrying the injected host services.
- * @returns disposer removing all registered routes.
- */
-export declare function apply(ctx: CompanionContext): () => void;
+export declare const inject: readonly ['webServer', 'webRuntime', 'apiProxy', 'sessions', 'sessionTitle', 'workspaceRegistry'];
+export type NotificationKind = 'completed' | 'blocked' | 'error' | 'max-tokens' | 'aborted' | 'question' | 'approval';
+export interface CompanionNotification {
+    version: 1;
+    key: string;
+    kind: NotificationKind;
+    sessionId: string;
+    title: string;
+    body: string;
+    at: number;
+}
+export declare function apply(ctx: CompanionContext, config?: Config): () => void;
 export {};
