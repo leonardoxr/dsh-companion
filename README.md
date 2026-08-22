@@ -1,62 +1,116 @@
 # dsh-companion
 
-An out-of-tree [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that exposes read-only workspace and session data as JSON, so native client shells — like [dsh-native](https://github.com/leonardoxr/dsh-native) — can render project managers without booting the full web UI.
+[![CI](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
-## Endpoints
+A small, backend-only [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) plugin that gives native clients a read-only JSON view of DSH workspaces and live sessions.
 
-Once loaded, the plugin registers three routes on the harness webserver:
+It is designed for client shells such as [dsh-native](https://github.com/leonardoxr/dsh-native) that need project and session metadata without loading or scraping the Harness web UI.
 
-| Route | Returns |
-|---|---|
-| `GET /api/companion/workspaces` | `{ workspaces: [...] }` — durable workspace list with member session ids |
-| `GET /api/companion/sessions` | `{ sessions: [...] }` — live sessions with their latest folded title |
-| `GET /api/companion/session/<id>` | one session summary (lineage + log length), or 404 |
+> [!IMPORTANT]
+> This project is **not** the unscoped `dsh-companion` package on npm. That name belongs to an unrelated project. Install this plugin from this repository or one of its GitHub Release archives.
 
-Every call reads the owning harness services directly (`workspaceRegistry`, `sessions`, `sessionTitle`); the plugin owns no cache and no event stream. Unloading it withdraws all three routes.
+## What it provides
+
+- Three small, cache-free JSON endpoints for workspaces and live sessions.
+- Explicit field projection: internal Harness objects are never serialized wholesale.
+- DSH trusted-host and same-origin checks on every request.
+- An installable DSH bundle with compiled JavaScript and no runtime dependencies.
+- Clean unloading: all registered routes are removed with the plugin.
 
 ## Install
 
-The package is a [dsh bundle](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish): installing it into a profile links the code *and* appends its `cordis.patch.yml` layer in one step — no hand-written patch file needed.
+### From a GitHub Release (recommended)
 
-From a local checkout (linked in place — convenient while hacking on the plugin):
-
-```sh
-dsh plugin --profile web add /absolute/path/to/dsh-companion
-```
-
-Or straight from GitHub, no checkout required:
+Download `dsh-companion-<version>.tgz` from the [latest release](https://github.com/leonardoxr/dsh-companion/releases/latest), then add it to the Web profile:
 
 ```sh
-dsh plugin --profile web add github:leonardoxr/dsh-companion
-```
-
-Then boot the profile:
-
-```sh
+dsh plugin --profile web add ./dsh-companion-<version>.tgz
 dsh web
 ```
 
-Verify:
+Each release also includes `SHA256SUMS.txt` so the archive can be verified before installation.
+
+### Directly from GitHub
+
+For the newest revision on `main`:
+
+```sh
+dsh plugin --profile web add github:leonardoxr/dsh-companion
+dsh web
+```
+
+A local checkout can be linked in place while developing:
+
+```sh
+dsh plugin --profile web add /absolute/path/to/dsh-companion
+dsh web
+```
+
+Verify the plugin after DSH starts:
 
 ```sh
 curl http://127.0.0.1:3080/api/companion/workspaces
 ```
 
+## API
+
+| Route | Response |
+|---|---|
+| `GET /api/companion/workspaces` | `{ workspaces: [...] }` — durable workspaces and their member session IDs |
+| `GET /api/companion/sessions` | `{ sessions: [...] }` — live sessions and their latest folded titles |
+| `GET /api/companion/session/<id>` | One live-session summary, or a JSON `404` |
+
+Example session-list response:
+
+```json
+{
+  "sessions": [
+    {
+      "id": "session-1",
+      "title": "Implement native navigation",
+      "cwd": "/work/dsh-native",
+      "createdAt": 1787356800000
+    }
+  ]
+}
+```
+
+All responses use `Content-Type: application/json` and `Cache-Control: no-store`. Non-`GET` requests return `405`.
+
+## Security model
+
+The endpoints expose workspace paths, session IDs, titles, timestamps, and session lineage. They enforce the Harness web runtime's `trustedHosts` policy and reject cross-site browser requests, but **this is a network trust boundary, not user authentication**.
+
+Do not expose the DSH server to networks whose clients should not read that metadata. See [SECURITY.md](SECURITY.md) for private vulnerability reporting.
+
 ## How it works
 
-The plugin is a plain Cordis module (`name` / `inject` / `apply`). It declares `webServer`, `webRuntime`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, registers its routes in `apply`, and returns a disposer that removes them on unload. It imports nothing from the harness at runtime; `npm run build` erases its type-only declarations and emits the installable JavaScript module under `dist/`.
+The package is a plain Cordis module with `name`, `inject`, and `apply` exports. It declares `webServer`, `webRuntime`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, then registers its routes when the bundle loads.
 
-Companion API routes enforce the web runtime's `trustedHosts` policy (including same-origin browser checks) and send `Cache-Control: no-store`. This is a network trust boundary, not user authentication; only expose DSH on networks whose clients may read workspace and live-session metadata.
+The plugin imports nothing from Harness at runtime. All capabilities arrive through injected Cordis services, and TypeScript emits the installable entry point to `dist/index.js`.
+
+## Compatibility
+
+DeepSeek Harness is currently in developer preview, so its plugin service contracts may change. This version targets the service contracts in the DSH `0.1.1` release-candidate line and requires Node.js 22 or newer. CI covers Node.js 22 and 24.
 
 ## Development
 
 ```sh
-npm install
+npm ci
 npm test
 npm pack --dry-run
 ```
 
-The committed `dist/` output is intentional: GitHub dependencies are installed under `node_modules`, where Node does not strip TypeScript syntax at runtime. The package entry point must therefore remain compiled JavaScript.
+`npm test` rebuilds `dist/` before running tests against the compiled entry point. The committed `dist/` directory is intentional: GitHub dependencies are installed under `node_modules`, where Node does not strip TypeScript syntax at runtime.
+
+If a source change alters generated output, include the updated `dist/` files in the same pull request.
+
+## Contributing and releases
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) for the local workflow and pull-request expectations, and follow the [Code of Conduct](CODE_OF_CONDUCT.md).
+
+Successful CI runs publish a short-lived, installable package artifact. Version tags such as `v0.1.1` publish the same compiled `.tgz` plus its checksum as a permanent GitHub Release. Maintainers can follow [docs/RELEASING.md](docs/RELEASING.md).
 
 ## License
 

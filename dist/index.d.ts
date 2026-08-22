@@ -78,4 +78,3 @@ export declare const inject: readonly ['webServer', 'webRuntime', 'sessions', 's
  */
 export declare function apply(ctx: CompanionContext): () => void;
 export {};
-//# sourceMappingURL=index.d.ts.map

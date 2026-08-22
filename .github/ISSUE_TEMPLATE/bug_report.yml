@@ -1,0 +1,68 @@
+name: Bug report
+description: Report reproducible incorrect behavior in dsh-companion
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting a problem. For security issues, use the private reporting link in SECURITY.md instead.
+  - type: input
+    id: version
+    attributes:
+      label: dsh-companion version
+      description: Release tag, archive version, or commit SHA.
+      placeholder: v0.1.1
+    validations:
+      required: true
+  - type: input
+    id: dsh-version
+    attributes:
+      label: DeepSeek Harness version
+      placeholder: 0.1.1-rc.2
+    validations:
+      required: true
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Operating system
+      options:
+        - Linux
+        - macOS
+        - Windows
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: Describe the actual and expected behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      placeholder: |
+        1. Install the plugin...
+        2. Start dsh web...
+        3. Request...
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or responses
+      description: Remove credentials and other sensitive information before pasting.
+      render: shell
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: I searched existing issues for duplicates.
+          required: true
+        - label: This report does not contain a security vulnerability.
+          required: true

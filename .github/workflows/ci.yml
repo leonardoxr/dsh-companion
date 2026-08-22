@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Test (Node.js ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node:
+          - 22
+          - 24
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and test
+        run: npm test
+      - name: Verify committed compiled output
+        shell: bash
+        run: |
+          git diff --exit-code -- dist/
+          test -z "$(git status --porcelain --untracked-files=all -- dist/)"
+
+  package:
+    name: Build installable artifact
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Pack compiled plugin
+        shell: bash
+        run: |
+          mkdir artifacts
+          npm pack --pack-destination artifacts
+          archive="$(find artifacts -maxdepth 1 -name '*.tgz' -type f -print -quit)"
+          test -n "$archive"
+          tar -tzf "$archive"
+          mkdir smoke
+          cd smoke
+          npm init --yes >/dev/null
+          npm install --ignore-scripts "../$archive"
+          node --input-type=module -e "const plugin = await import('dsh-companion'); if (plugin.name !== 'dsh-companion' || typeof plugin.apply !== 'function') process.exit(1)"
+      - name: Upload compiled plugin
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: dsh-companion-${{ github.sha }}
+          path: artifacts/*.tgz
+          if-no-files-found: error
+          retention-days: 14

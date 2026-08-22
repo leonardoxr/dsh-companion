@@ -1,0 +1,63 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: read
+
+jobs:
+  release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          fetch-depth: 0
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 24
+          cache: npm
+      - name: Validate release tag
+        id: metadata
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v[0-9]+.[0-9]+.[0-9]+$ ]]; then
+            echo "Release tag must be a stable semantic version (vMAJOR.MINOR.PATCH)." >&2
+            exit 1
+          fi
+          version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package.json', 'utf8')).version)")"
+          lock_version="$(node -e "console.log(JSON.parse(require('node:fs').readFileSync('package-lock.json', 'utf8')).version)")"
+          test "$GITHUB_REF_NAME" = "v$version"
+          test "$version" = "$lock_version"
+          git merge-base --is-ancestor "$GITHUB_SHA" "origin/${{ github.event.repository.default_branch }}"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+      - name: Install dependencies
+        run: npm ci
+      - name: Build and test
+        run: npm test
+      - name: Verify committed compiled output
+        shell: bash
+        run: |
+          git diff --exit-code -- dist/
+          test -z "$(git status --porcelain --untracked-files=all -- dist/)"
+      - name: Build release assets
+        shell: bash
+        run: |
+          mkdir release
+          npm pack --pack-destination release
+          cd release
+          sha256sum ./*.tgz > SHA256SUMS.txt
+          sha256sum --check SHA256SUMS.txt
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME"             release/*.tgz release/SHA256SUMS.txt             --repo "$GITHUB_REPOSITORY"             --verify-tag             --generate-notes             --title "dsh-companion $GITHUB_REF_NAME"

@@ -1,7 +1,8 @@
 {
   "name": "dsh-companion",
   "version": "0.1.1",
-  "description": "Out-of-tree DeepSeek Harness plugin: read-only workspace/session JSON for native client shells",
+  "description": "Read-only workspace and session JSON API for DeepSeek Harness clients",
+  "private": true,
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
@@ -20,7 +21,27 @@
     "test": "npm run build && node --test",
     "prepack": "npm test"
   },
+  "engines": {
+    "node": ">=22"
+  },
+  "keywords": [
+    "deepseek-harness",
+    "dsh",
+    "cordis",
+    "plugin",
+    "native-client",
+    "typescript"
+  ],
+  "author": "leonardoxr",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/leonardoxr/dsh-companion.git"
+  },
+  "homepage": "https://github.com/leonardoxr/dsh-companion#readme",
+  "bugs": {
+    "url": "https://github.com/leonardoxr/dsh-companion/issues"
+  },
   "devDependencies": {
     "@types/node": "^24.13.3",
     "typescript": "^7.0.2"
