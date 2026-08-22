@@ -3,6 +3,15 @@
   "version": "0.1.0",
   "description": "Out-of-tree DeepSeek Harness plugin: read-only workspace/session JSON for native client shells",
   "type": "module",
-  "private": true,
-  "license": "MIT"
+  "main": "./src/index.ts",
+  "files": [
+    "src/",
+    "cordis.patch.yml"
+  ],
+  "license": "MIT",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
 }

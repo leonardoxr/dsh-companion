@@ -16,26 +16,24 @@ Every call reads the owning harness services directly (`workspaceRegistry`, `ses
 
 ## Install
 
-Add an insert row to a cordis patch file (for example `companion.cordis.yml`) pointing at your checkout — the path must be absolute:
+The package is a [dsh bundle](https://deepseek-harness.github.io/deepseek-harness/en/develop/basic/publish): installing it into a profile links the code *and* appends its `cordis.patch.yml` layer in one step — no hand-written patch file needed.
 
-```yaml
-- insert:
-    - id: dsh-companion
-      name: 'C:/absolute/path/to/dsh-companion/src/index.ts'
-```
-
-Add an insert row to a cordis patch file (for example `companion.cordis.yml`) pointing at your checkout. On Windows the loader imports the path as an ESM URL, so use a `file:///` URL and percent-encode spaces:
-
-```yaml
-- insert:
-    - id: dsh-companion
-      name: 'file:///C:/absolute/path/to/dsh-companion/src/index.ts'
-```
-
-Then start the harness UI with the overlay:
+From a local checkout (linked in place — convenient while hacking on the plugin):
 
 ```sh
-pnpm dsh web --patch ./companion.cordis.yml
+npx @deepseek-ai/dsh plugin --profile demo add /absolute/path/to/dsh-companion
+```
+
+Or straight from GitHub, no checkout required:
+
+```sh
+npx @deepseek-ai/dsh plugin --profile demo add github:leonardoxr/dsh-companion
+```
+
+Then boot the profile:
+
+```sh
+npx @deepseek-ai/dsh web --profile demo
 ```
 
 Verify:

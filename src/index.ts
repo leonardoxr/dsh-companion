@@ -9,10 +9,11 @@
  *   GET /api/companion/sessions          → { sessions: [...] }
  *   GET /api/companion/session/<id>      → summary or 404
  *
- * The plugin is loaded through a cordis.yml patch (see README.md). It imports
- * nothing at runtime from the harness: every capability arrives through the
- * injected Cordis services, and the node:http types below are type-only.
- * Unloading the plugin removes its routes.
+ * The plugin ships as a dsh bundle (see README.md): install it into a
+ * profile with `npx @deepseek-ai/dsh plugin add`. It
+ * imports nothing at runtime from the harness: every capability arrives
+ * through injected Cordis services, and the node:http types below are
+ * type-only. Unloading the plugin removes its routes.
  * @module dsh-companion
  */
 

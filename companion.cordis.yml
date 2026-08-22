@@ -1,3 +1,0 @@
-- insert:
-    - id: dsh-companion
-      name: 'file:///C:/absolute/path/to/dsh-companion/src/index.ts'
