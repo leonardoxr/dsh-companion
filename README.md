@@ -24,6 +24,14 @@ Add an insert row to a cordis patch file (for example `companion.cordis.yml`) po
       name: 'C:/absolute/path/to/dsh-companion/src/index.ts'
 ```
 
+Add an insert row to a cordis patch file (for example `companion.cordis.yml`) pointing at your checkout. On Windows the loader imports the path as an ESM URL, so use a `file:///` URL and percent-encode spaces:
+
+```yaml
+- insert:
+    - id: dsh-companion
+      name: 'file:///C:/absolute/path/to/dsh-companion/src/index.ts'
+```
+
 Then start the harness UI with the overlay:
 
 ```sh

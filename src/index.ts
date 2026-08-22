@@ -108,10 +108,15 @@ export function apply(ctx: CompanionContext): () => void {
     ctx.webServer.register({
       kind: 'exact',
       path: '/api/companion/workspaces',
-      handler(_req, res) {
-        // Copy out of the registry's live arrays so serialization sees plain JSON.
+      handler(req, res) {
+        if (rejectNonGet(req, res)) return
+        // Pick fields explicitly: registry entities carry non-JSON internals.
         const workspaces = ctx.workspaceRegistry.list().map(workspace => ({
-          ...workspace,
+          id: workspace.id,
+          path: workspace.path,
+          title: workspace.title,
+          createdAt: workspace.createdAt,
+          updatedAt: workspace.updatedAt,
           sessionIds: [...workspace.sessionIds],
         }))
         send(res, 200, { workspaces })
@@ -121,7 +126,8 @@ export function apply(ctx: CompanionContext): () => void {
     ctx.webServer.register({
       kind: 'exact',
       path: '/api/companion/sessions',
-      handler(_req, res) {
+      handler(req, res) {
+        if (rejectNonGet(req, res)) return
         const sessions: SessionRow[] = ctx.sessions.list().map(session => ({
           id: session.id,
           ...titleAndCwd(ctx, session),
@@ -133,7 +139,7 @@ export function apply(ctx: CompanionContext): () => void {
 
     ctx.webServer.register({
       kind: 'prefix',
-      path: '/api/companion/session/',
+      path: '/api/companion/session',
       handler(req, res) {
         if (rejectNonGet(req, res)) return
         const url = new URL(req.url ?? '/', 'http://localhost')
