@@ -1,14 +1,30 @@
 {
   "name": "dsh-companion",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Out-of-tree DeepSeek Harness plugin: read-only workspace/session JSON for native client shells",
   "type": "module",
-  "main": "./src/index.ts",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
   "files": [
-    "src/",
+    "dist/",
     "cordis.patch.yml"
   ],
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json",
+    "test": "npm run build && node --test",
+    "prepack": "npm test"
+  },
   "license": "MIT",
+  "devDependencies": {
+    "@types/node": "^24.13.3",
+    "typescript": "^7.0.2"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

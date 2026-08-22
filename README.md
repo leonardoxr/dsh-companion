@@ -21,19 +21,19 @@ The package is a [dsh bundle](https://deepseek-harness.github.io/deepseek-harnes
 From a local checkout (linked in place — convenient while hacking on the plugin):
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile demo add /absolute/path/to/dsh-companion
+dsh plugin --profile web add /absolute/path/to/dsh-companion
 ```
 
 Or straight from GitHub, no checkout required:
 
 ```sh
-npx @deepseek-ai/dsh plugin --profile demo add github:leonardoxr/dsh-companion
+dsh plugin --profile web add github:leonardoxr/dsh-companion
 ```
 
 Then boot the profile:
 
 ```sh
-npx @deepseek-ai/dsh web --profile demo
+dsh web
 ```
 
 Verify:
@@ -44,7 +44,19 @@ curl http://127.0.0.1:3080/api/companion/workspaces
 
 ## How it works
 
-The plugin is a plain Cordis module (`name` / `inject` / `apply`). It declares `webServer`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, registers its routes in `apply`, and returns a disposer that removes them on unload. It imports nothing from the harness at runtime — all types are erased at load — so the repo carries no dependencies and no build step.
+The plugin is a plain Cordis module (`name` / `inject` / `apply`). It declares `webServer`, `webRuntime`, `sessions`, `sessionTitle`, and `workspaceRegistry` as required services, registers its routes in `apply`, and returns a disposer that removes them on unload. It imports nothing from the harness at runtime; `npm run build` erases its type-only declarations and emits the installable JavaScript module under `dist/`.
+
+Companion API routes enforce the web runtime's `trustedHosts` policy (including same-origin browser checks) and send `Cache-Control: no-store`. This is a network trust boundary, not user authentication; only expose DSH on networks whose clients may read workspace and live-session metadata.
+
+## Development
+
+```sh
+npm install
+npm test
+npm pack --dry-run
+```
+
+The committed `dist/` output is intentional: GitHub dependencies are installed under `node_modules`, where Node does not strip TypeScript syntax at runtime. The package entry point must therefore remain compiled JavaScript.
 
 ## License
 
