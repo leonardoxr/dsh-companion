@@ -4,6 +4,7 @@ import type { SettingsScope } from '@deepseek-ai/dsh-client-runtime/client'
 import type {} from '@deepseek-ai/dsh-client-connection/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings/client'
 import type {} from '@deepseek-ai/dsh-client-ui-settings-plugins/client'
+import { registerImagePreviewTab } from './ImagePreviewTab'
 
 const PLUGIN_ID = 'dsh-companion'
 const NS = 'companion-notifications'
@@ -37,7 +38,7 @@ const OPTIONS: ReadonlyArray<{ key: SettingKey; label: string; description: stri
   { key: 'subagents', label: 'Subagent sessions', description: 'Include enabled alerts from subagent sessions.' },
 ]
 
-export const inject = ['slots', 'settingsScope']
+export const inject = ['slots', 'settingsScope', 'betterSidebar']
 
 function decodeSettings(value: unknown): NotificationSettings | undefined {
   if (typeof value !== 'object' || value === null) return undefined
@@ -130,6 +131,7 @@ function SettingsCard({ settings }: SettingsCardProps) {
 
 export function apply(ctx: Context): void {
   ctx.effect(installStyles, 'dsh-companion: settings styles')
+  registerImagePreviewTab(ctx)
   ctx.slots.inject('settings.plugin.item', () => ctx.slots.register({
     name: 'settings.plugin.item',
     key: NS,

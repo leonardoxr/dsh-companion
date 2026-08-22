@@ -15,6 +15,7 @@ It is designed for client shells such as [dsh-native](https://github.com/leonard
 - Three small, cache-free JSON endpoints for workspaces and live sessions.
 - A reconnectable server-sent-event feed for native completion, failure, question, and approval alerts.
 - A **Settings → Plugins → DSH Companion notifications** card that filters alert kinds and subagent events at the source.
+- An optional **Images** tab for the [dsh-better-sidebar](https://github.com/leonardoxr/DSH-better-sidebar) workbench: every image in the conversation — attachments, assistant images, and images the model reads — as a clickable gallery.
 - Explicit field projection: internal Harness objects are never serialized wholesale.
 - DSH trusted-host and same-origin checks on every request.
 - An installable DSH bundle with compiled JavaScript and a small settings-schema dependency.
@@ -99,6 +100,16 @@ Open **Settings → Plugins → DSH Companion notifications** in the Harness Web
 Changes are persisted through the Harness settings service and apply immediately to subsequent events without restarting the companion feed. **Reset defaults** clears the user overrides and restores the values above.
 
 Each notification payload is versioned and contains only a stable key, kind, session ID/title, short body, and timestamp. Raw messages, tool arguments, commands, icons, and click-through URLs are never forwarded.
+
+## Images tab (optional)
+
+When [dsh-better-sidebar](https://github.com/leonardoxr/DSH-better-sidebar) is installed, the client plugin registers an **Images** tab in its `+` menu. It scans the current session's folded timeline for durable image references — user attachments, assistant image blocks, and image blocks inside tool results (for example a `read_image` tool output) — resolves them through the Harness session attachment route, and renders them as a thumbnail gallery with a full-size lightbox.
+
+The integration is a soft dependency:
+
+- Without better-sidebar, nothing changes — no tab, no styles, no host routes.
+- The client never imports better-sidebar code; it restates the small registration contract locally, so either plugin can load, unload, or hot-reload independently.
+- Images are fetched lazily while the tab is visible and cached as object URLs for the lifetime of the view.
 
 ## Security model
 
