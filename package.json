@@ -1,0 +1,8 @@
+{
+  "name": "dsh-companion",
+  "version": "0.1.0",
+  "description": "Out-of-tree DeepSeek Harness plugin: read-only workspace/session JSON for native client shells",
+  "type": "module",
+  "private": true,
+  "license": "MIT"
+}
