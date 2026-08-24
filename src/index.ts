@@ -45,10 +45,23 @@ interface EventStreamsLike {
   host(request: { rpcId: string; payload: Record<string, never> }, signal: AbortSignal): AsyncIterable<RpcEnvelope>
 }
 
+interface SessionSummaryLike {
+  sessionId: string
+  updatedAt: number
+  cwd?: string
+}
+
+interface SessionApiLike {
+  list(request: { rpcId: string; payload: Record<string, never> }): Promise<{
+    rpcId: string
+    payload: { items: SessionSummaryLike[] }
+  }>
+}
+
 interface CompanionContext {
   webServer: WebServerLike
   webRuntime: { trustedHosts: readonly string[] }
-  apiProxy: { events: EventStreamsLike }
+  apiProxy: { events: EventStreamsLike; sessions: SessionApiLike }
   settings: {
     register<T>(namespace: string, schema: z<T>, options: { base: T }): { get(): T }
   }
@@ -123,6 +136,7 @@ interface SessionRow {
   title: string | null
   cwd: string | null
   createdAt: number
+  updatedAt: number
 }
 
 export type NotificationKind = 'completed' | 'blocked' | 'error' | 'max-tokens' | 'aborted' | 'question' | 'approval'
@@ -435,14 +449,31 @@ export function apply(ctx: CompanionContext, config: Config = { notifications: d
     ctx.webServer.register({
       kind: 'exact',
       path: '/api/companion/sessions',
-      handler(req, res) {
+      async handler(req, res) {
         if (rejectUntrusted(req, res) || rejectNonGet(req, res)) return
-        const sessions: SessionRow[] = ctx.sessions.list().map(session => ({
+        const live = new Map(ctx.sessions.list().map(session => [session.id, {
           id: session.id,
           ...titleAndCwd(ctx, session),
           createdAt: session.header.createdAt,
-        }))
-        send(res, 200, { sessions })
+          updatedAt: session.header.createdAt,
+        }]))
+        try {
+          const response = await ctx.apiProxy.sessions.list({ rpcId: randomUUID(), payload: {} })
+          const sessions: SessionRow[] = response.payload.items.map(summary => {
+            const current = live.get(summary.sessionId)
+            return {
+              id: summary.sessionId,
+              title: current?.title ?? null,
+              cwd: current?.cwd ?? summary.cwd ?? null,
+              createdAt: current?.createdAt ?? summary.updatedAt,
+              updatedAt: summary.updatedAt,
+            }
+          })
+          send(res, 200, { sessions })
+        } catch (error) {
+          ctx.logger?.warn('dsh-companion: persisted session listing failed', error)
+          send(res, 200, { sessions: [...live.values()] })
+        }
       },
     }),
     ctx.webServer.register({

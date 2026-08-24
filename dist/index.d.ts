@@ -45,6 +45,22 @@ interface EventStreamsLike {
         payload: Record<string, never>;
     }, signal: AbortSignal): AsyncIterable<RpcEnvelope>;
 }
+interface SessionSummaryLike {
+    sessionId: string;
+    updatedAt: number;
+    cwd?: string;
+}
+interface SessionApiLike {
+    list(request: {
+        rpcId: string;
+        payload: Record<string, never>;
+    }): Promise<{
+        rpcId: string;
+        payload: {
+            items: SessionSummaryLike[];
+        };
+    }>;
+}
 interface CompanionContext {
     webServer: WebServerLike;
     webRuntime: {
@@ -52,6 +68,7 @@ interface CompanionContext {
     };
     apiProxy: {
         events: EventStreamsLike;
+        sessions: SessionApiLike;
     };
     settings: {
         register<T>(namespace: string, schema: z<T>, options: {

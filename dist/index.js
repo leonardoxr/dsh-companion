@@ -322,15 +322,33 @@ export function apply(ctx, config = { notifications: defaultNotifications }) {
         ctx.webServer.register({
             kind: 'exact',
             path: '/api/companion/sessions',
-            handler(req, res) {
+            async handler(req, res) {
                 if (rejectUntrusted(req, res) || rejectNonGet(req, res))
                     return;
-                const sessions = ctx.sessions.list().map(session => ({
-                    id: session.id,
-                    ...titleAndCwd(ctx, session),
-                    createdAt: session.header.createdAt,
-                }));
-                send(res, 200, { sessions });
+                const live = new Map(ctx.sessions.list().map(session => [session.id, {
+                        id: session.id,
+                        ...titleAndCwd(ctx, session),
+                        createdAt: session.header.createdAt,
+                        updatedAt: session.header.createdAt,
+                    }]));
+                try {
+                    const response = await ctx.apiProxy.sessions.list({ rpcId: randomUUID(), payload: {} });
+                    const sessions = response.payload.items.map(summary => {
+                        const current = live.get(summary.sessionId);
+                        return {
+                            id: summary.sessionId,
+                            title: current?.title ?? null,
+                            cwd: current?.cwd ?? summary.cwd ?? null,
+                            createdAt: current?.createdAt ?? summary.updatedAt,
+                            updatedAt: summary.updatedAt,
+                        };
+                    });
+                    send(res, 200, { sessions });
+                }
+                catch (error) {
+                    ctx.logger?.warn('dsh-companion: persisted session listing failed', error);
+                    send(res, 200, { sessions: [...live.values()] });
+                }
             },
         }),
         ctx.webServer.register({

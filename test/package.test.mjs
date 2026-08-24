@@ -115,6 +115,12 @@ function createHarness(sessionOverrides = {}) {
         mux: (...args) => mux.open(...args),
         host: (...args) => host.open(...args),
       },
+      sessions: {
+        list: async request => ({
+          rpcId: request.rpcId,
+          payload: { items: [{ sessionId: session.id, updatedAt: 456, cwd: 'C:/workspace', running: true, blank: false }] },
+        }),
+      },
     },
     settings: {
       register(namespace, schema, options) {
@@ -188,6 +194,7 @@ test('compiled plugin registers working read-only routes and disposes them', asy
     title: 'Session title',
     cwd: 'C:/workspace',
     createdAt: 123,
+    updatedAt: 456,
   })
 
   const sessionRoute = harness.routes.find(route => route.path === '/api/companion/session')
