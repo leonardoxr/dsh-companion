@@ -1,5 +1,7 @@
 # dsh-companion
 
+English | [简体中文](README.zh.md)
+
 [![CI](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml/badge.svg)](https://github.com/leonardoxr/dsh-companion/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 
