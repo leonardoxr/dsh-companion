@@ -225,7 +225,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				]
 			});
 		}
-		const STYLE_ID$1 = "dsh-companion/image-preview";
+		const STYLE_ID$2 = "dsh-companion/image-preview";
 		const STYLE_LINES = [
 			".dsc-img-tab{box-sizing:border-box;height:100%;overflow:auto;padding:14px;color:var(--dsw-alias-label-primary,#111);font-size:13px;line-height:18px}",
 			".dsc-img-tab *{box-sizing:border-box}",
@@ -256,7 +256,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			ctx.effect(() => {
 				const tag = document.createElement("style");
 				tag.dataset.plugin = "dsh-companion";
-				tag.dataset.pluginCss = STYLE_ID$1;
+				tag.dataset.pluginCss = STYLE_ID$2;
 				tag.textContent = STYLE_LINES.join("\n");
 				document.head.append(tag);
 				const disposeTab = sidebar.registerTab({
@@ -271,6 +271,285 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 					tag.remove();
 				};
 			}, "dsh-companion: image preview tab");
+		}
+		//#endregion
+		//#region src/workspace-sidebar-model.ts
+		function isNativeWorkspaceBridge(value) {
+			if (typeof value !== "object" || value === null) return false;
+			const candidate = value;
+			return typeof candidate.getSnapshot === "function" && typeof candidate.refresh === "function" && typeof candidate.connect === "function";
+		}
+		function originOf(value) {
+			try {
+				return new URL(value).origin;
+			} catch {
+				return null;
+			}
+		}
+		function filterWorkspaceRows(rows, query) {
+			const needle = query.trim().toLocaleLowerCase();
+			if (needle === "") return [...rows];
+			return rows.filter((row) => [
+				row.title,
+				row.path,
+				row.hostName,
+				row.hostUrl,
+				...(row.sessions ?? []).map((session) => session.title)
+			].some((value) => value.toLocaleLowerCase().includes(needle)));
+		}
+		function sessionCountLabel(row) {
+			if (row.liveSessions !== null && row.liveSessions !== row.totalSessions) return `${row.liveSessions} of ${row.totalSessions}`;
+			return String(row.totalSessions);
+		}
+		//#endregion
+		//#region src/client/NativeWorkspaceSidebar.tsx
+		const STYLE_ID$1 = "dsh-companion/native-workspace-sidebar";
+		const REFRESH_INTERVAL_MS = 6e4;
+		const SHADOW_PRIORITY = -1;
+		function nativeWorkspaceBridgeOf(value = window.dshNativeWorkspaces) {
+			return isNativeWorkspaceBridge(value) ? value : void 0;
+		}
+		function installWorkspaceStyles() {
+			document.querySelector(`style[data-plugin="${STYLE_ID$1}"]`)?.remove();
+			const tag = document.createElement("style");
+			tag.dataset.plugin = STYLE_ID$1;
+			tag.textContent = `
+    .dsc-workspaces { display:flex; min-height:0; flex:1; flex-direction:column; color:var(--ds-color-text-1,#f2f2f2); }
+    .dsc-ws-head { display:flex; align-items:center; gap:8px; padding:18px 20px 10px; }
+    .dsc-ws-title { flex:1; font-size:15px; font-weight:500; color:var(--ds-color-text-2,#b9b9bd); }
+    .dsc-ws-icon { width:32px; height:32px; border:0; border-radius:8px; color:inherit; background:transparent; cursor:pointer; }
+    .dsc-ws-icon:hover,.dsc-ws-icon:focus-visible { background:var(--ds-color-bg-3,#303033); outline:none; }
+    .dsc-ws-search { margin:0 14px 8px; width:calc(100% - 28px); box-sizing:border-box; border:1px solid var(--ds-color-border-2,#3f3f43); border-radius:9px; padding:8px 10px; color:inherit; background:var(--ds-color-bg-2,#252527); }
+    .dsc-ws-scroll { min-height:0; overflow:auto; padding:2px 10px 18px; scrollbar-gutter:stable; }
+    .dsc-ws-empty,.dsc-ws-error { padding:18px 12px; color:var(--ds-color-text-3,#85858a); font-size:13px; line-height:1.45; }
+    .dsc-ws-error { color:var(--ds-color-error,#df7777); }
+    .dsc-ws-group { margin:2px 0; border-radius:10px; }
+    .dsc-ws-row { display:flex; width:100%; min-width:0; align-items:center; border-radius:9px; background:transparent; }
+    .dsc-ws-row:hover,.dsc-ws-row:focus-within { background:var(--ds-color-bg-3,#303033); }
+    .dsc-ws-main { display:flex; min-width:0; flex:1; align-items:center; gap:8px; border:0; border-radius:9px; padding:8px 4px 8px 9px; text-align:left; color:inherit; background:transparent; cursor:pointer; }
+    .dsc-ws-main:focus-visible { outline:1px solid var(--ds-color-primary,#72a7ff); outline-offset:-1px; }
+    .dsc-ws-chevron { width:12px; color:var(--ds-color-text-3,#85858a); font-size:11px; }
+    .dsc-ws-copy { min-width:0; flex:1; }
+    .dsc-ws-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:550; }
+    .dsc-ws-meta { display:flex; min-width:0; gap:6px; margin-top:3px; color:var(--ds-color-text-3,#85858a); font-size:10px; }
+    .dsc-ws-server { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .dsc-ws-current { color:var(--ds-color-primary,#72a7ff); }
+    .dsc-ws-stale { opacity:.58; }
+    .dsc-ws-new { width:28px; height:28px; flex:0 0 auto; margin-right:4px; border:0; border-radius:7px; color:inherit; background:transparent; cursor:pointer; font-size:17px; }
+    .dsc-ws-new:hover,.dsc-ws-new:focus-visible { background:var(--ds-color-bg-4,#3a3a3e); outline:none; }
+    .dsc-ws-sessions { margin-left:22px; padding:0 0 4px; }
+    .dsc-session { display:flex; width:100%; min-width:0; align-items:center; gap:7px; border:0; border-radius:8px; padding:7px 9px; color:var(--ds-color-text-2,#c7c7ca); background:transparent; cursor:pointer; text-align:left; }
+    .dsc-session:hover,.dsc-session:focus-visible,.dsc-session-selected { background:var(--ds-color-bg-3,#303033); color:var(--ds-color-text-1,#fff); outline:none; }
+    .dsc-session-dot { width:5px; height:5px; flex:0 0 auto; border-radius:50%; background:var(--ds-color-text-3,#85858a); }
+    .dsc-session-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
+    .dsc-ws-rail { display:flex; flex:1; align-items:flex-start; justify-content:center; padding-top:16px; }
+    .dsc-ws-rail .dsc-ws-icon { width:36px; height:36px; font-size:18px; }
+    @media (prefers-reduced-motion:no-preference) { .dsc-ws-row,.dsc-ws-main,.dsc-ws-new,.dsc-session,.dsc-ws-icon { transition:background-color 120ms ease,color 120ms ease; } }
+  `;
+			document.head.append(tag);
+			return () => tag.remove();
+		}
+		function WorkspaceGroup(props) {
+			const { row, expanded, currentOrigin, currentSessionId, onToggle, onConnect, onStartSession, onOpenSession } = props;
+			const onCurrentHost = originOf(row.hostUrl) === currentOrigin;
+			const sessions = row.sessions ?? [];
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("section", {
+				className: `dsc-ws-group${row.stale === true ? " dsc-ws-stale" : ""}`,
+				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: "dsc-ws-row",
+					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+						className: "dsc-ws-main",
+						type: "button",
+						onClick: onToggle,
+						title: row.path,
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsc-ws-chevron",
+							"aria-hidden": "true",
+							children: expanded ? "▾" : "▸"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+							className: "dsc-ws-copy",
+							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+								className: "dsc-ws-name",
+								children: row.title
+							}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
+								className: "dsc-ws-meta",
+								children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									className: onCurrentHost ? "dsc-ws-server dsc-ws-current" : "dsc-ws-server",
+									children: row.hostName
+								}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+									"aria-label": `${row.totalSessions} sessions`,
+									children: sessionCountLabel(row)
+								})]
+							})]
+						})]
+					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+						className: "dsc-ws-new",
+						type: "button",
+						title: onCurrentHost ? "New session" : `Open ${row.hostName}`,
+						"aria-label": onCurrentHost ? `New session in ${row.title}` : `Open ${row.hostName}`,
+						onClick: () => {
+							if (onCurrentHost) onStartSession();
+							else onConnect();
+						},
+						children: onCurrentHost ? "+" : "↗"
+					})]
+				}), expanded && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+					className: "dsc-ws-sessions",
+					children: [sessions.map((session) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("button", {
+						className: `dsc-session${onCurrentHost && currentSessionId === session.id ? " dsc-session-selected" : ""}`,
+						type: "button",
+						title: session.cwd ?? session.title,
+						onClick: () => {
+							if (onCurrentHost) onOpenSession(session.id);
+							else onConnect();
+						},
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsc-session-dot",
+							"aria-hidden": "true"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsc-session-label",
+							children: session.title
+						})]
+					}, session.id)), sessions.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+						className: "dsc-ws-empty",
+						children: "No sessions yet"
+					})]
+				})]
+			});
+		}
+		function NativeWorkspaceSidebar(props) {
+			const { wide, expandSidebar, useSessions, startSession, open, bridge } = props;
+			const currentSessionId = useSessions((state) => state.current);
+			const [snapshot, setSnapshot] = (0, react.useState)(null);
+			const [error, setError] = (0, react.useState)(null);
+			const [query, setQuery] = (0, react.useState)("");
+			const [expanded, setExpanded] = (0, react.useState)(() => /* @__PURE__ */ new Set());
+			const currentOrigin = window.location.origin;
+			const load = (0, react.useCallback)(async (refresh) => {
+				try {
+					const next = refresh ? await bridge.refresh() : await bridge.getSnapshot();
+					setSnapshot(next);
+					setError(null);
+				} catch (cause) {
+					setError(cause instanceof Error ? cause.message : String(cause));
+				}
+			}, [bridge]);
+			(0, react.useEffect)(() => {
+				load(false).then(() => load(true));
+				const timer = window.setInterval(() => {
+					if (document.visibilityState === "visible") load(true);
+				}, REFRESH_INTERVAL_MS);
+				return () => window.clearInterval(timer);
+			}, [load]);
+			(0, react.useEffect)(() => {
+				if (snapshot === null || expanded.size > 0) return;
+				const currentRows = snapshot.rows.filter((row) => originOf(row.hostUrl) === currentOrigin);
+				if (currentRows.length > 0) setExpanded(new Set(currentRows.map((row) => `${row.hostId}:${row.id}`)));
+			}, [
+				currentOrigin,
+				expanded.size,
+				snapshot
+			]);
+			const rows = (0, react.useMemo)(() => filterWorkspaceRows(snapshot?.rows ?? [], query), [query, snapshot]);
+			if (!wide) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+				className: "dsc-ws-rail",
+				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+					className: "dsc-ws-icon",
+					type: "button",
+					"aria-label": "Show workspaces",
+					title: "Workspaces",
+					onClick: expandSidebar,
+					children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("svg", {
+						"aria-hidden": "true",
+						viewBox: "0 0 20 20",
+						width: "18",
+						height: "18",
+						fill: "none",
+						stroke: "currentColor",
+						strokeWidth: "1.5",
+						children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("path", { d: "M2.75 5.25A1.5 1.5 0 0 1 4.25 3.75h4l1.5 1.5h6A1.5 1.5 0 0 1 17.25 6.75v7A1.5 1.5 0 0 1 15.75 15.25H4.25a1.5 1.5 0 0 1-1.5-1.5z" })
+					})
+				})
+			});
+			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+				className: "dsc-workspaces",
+				children: [
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("header", {
+						className: "dsc-ws-head",
+						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
+							className: "dsc-ws-title",
+							children: "Workspaces"
+						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
+							className: "dsc-ws-icon",
+							type: "button",
+							"aria-label": "Refresh workspaces",
+							title: "Refresh",
+							onClick: () => void load(true),
+							children: "↻"
+						})]
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
+						className: "dsc-ws-search",
+						type: "search",
+						value: query,
+						placeholder: "Search workspaces",
+						"aria-label": "Search workspaces",
+						onChange: (event) => setQuery(event.currentTarget.value)
+					}),
+					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
+						className: "dsc-ws-scroll",
+						children: [
+							error !== null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "dsc-ws-error",
+								children: error
+							}),
+							snapshot === null && error === null && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "dsc-ws-empty",
+								children: "Loading workspaces…"
+							}),
+							snapshot !== null && rows.length === 0 && /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
+								className: "dsc-ws-empty",
+								children: "No matching workspaces"
+							}),
+							rows.map((row) => {
+								const key = `${row.hostId}:${row.id}`;
+								return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(WorkspaceGroup, {
+									row,
+									expanded: expanded.has(key),
+									currentOrigin,
+									currentSessionId,
+									onToggle: () => setExpanded((current) => {
+										const next = new Set(current);
+										if (next.has(key)) next.delete(key);
+										else next.add(key);
+										return next;
+									}),
+									onConnect: () => {
+										bridge.connect(row.hostId);
+									},
+									onStartSession: () => startSession(row.id),
+									onOpenSession: open
+								}, key);
+							})
+						]
+					})
+				]
+			});
+		}
+		function registerNativeWorkspaceSidebar(ctx) {
+			const bridge = nativeWorkspaceBridgeOf();
+			if (bridge === void 0) return;
+			const client = ctx;
+			ctx.effect(installWorkspaceStyles, "dsh-companion: native workspace sidebar styles");
+			client.slots.inject("sidebar.workspaces", () => client.slots.register({
+				name: "sidebar.workspaces",
+				priority: SHADOW_PRIORITY,
+				inject: () => ({
+					bridge,
+					startSession: (workspaceId) => client.workspaces.startSession(workspaceId),
+					open: (sessionId) => client.sessions.open(sessionId)
+				})
+			}, NativeWorkspaceSidebar));
 		}
 		//#endregion
 		//#region src/client/index.tsx
@@ -322,7 +601,9 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 		const inject = [
 			"slots",
 			"settingsScope",
-			"betterSidebar"
+			"betterSidebar",
+			"sessions",
+			"workspaces"
 		];
 		function decodeSettings(value) {
 			if (typeof value !== "object" || value === null) return void 0;
@@ -426,6 +707,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 		function apply(ctx) {
 			ctx.effect(installStyles, "dsh-companion: settings styles");
 			registerImagePreviewTab(ctx);
+			registerNativeWorkspaceSidebar(ctx);
 			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
 				name: "settings.plugin.item",
 				key: NS,

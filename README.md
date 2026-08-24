@@ -13,6 +13,7 @@ It is designed for client shells such as [dsh-native](https://github.com/leonard
 ## What it provides
 
 - Three small, cache-free JSON endpoints for workspaces and live sessions.
+- A unified Workspace browser in the Harness left sidebar when the page runs inside DSH Native, combining local and saved-server workspaces without replacing the shell, New Session control, or Settings footer.
 - A reconnectable server-sent-event feed for native completion, failure, question, and approval alerts.
 - A **Settings → Plugins → DSH Companion notifications** card that filters alert kinds and subagent events at the source.
 - An optional **Images** tab for the [dsh-better-sidebar](https://github.com/leonardoxr/DSH-better-sidebar) workbench: every image in the conversation — attachments, assistant images, and images the model reads — as a clickable gallery.
@@ -55,6 +56,13 @@ Verify the plugin after DSH starts:
 ```sh
 curl http://127.0.0.1:3080/api/companion/workspaces
 ```
+
+## DSH Native workspace sidebar
+
+DSH Native exposes a read-only, origin-checked workspace bridge to its managed local DSH page and saved DSH servers. When that bridge is present, Companion shadows only the core `sidebar.workspaces` region with the same cross-server Workspace model used by Native's Workspace Home. The normal Harness Workspace browser remains unchanged in ordinary browsers and automatically returns if Companion unloads.
+
+Workspace rows show their owning server and Session counts. Current-server Session rows open directly; choosing a Workspace or Session owned by another saved server switches DSH Native to that server. No host-management, filesystem, credential, or arbitrary IPC capability is exposed to page scripts.
+
 
 ## API
 
