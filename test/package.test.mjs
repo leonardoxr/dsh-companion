@@ -162,6 +162,7 @@ test('package entry point and settings schema are compiled', async () => {
   assert.ok(pkg.dsh.client.inject.includes('@deepseek-ai/dsh-client-ui-primitives'))
   const client = await readFile(new URL('../client/client.js', import.meta.url), 'utf8')
   assert.doesNotMatch(client, /const inject = \[\s*"slots",\s*"settingsScope",\s*"betterSidebar"/)
+  assert.match(client, /ctx\.get\(["']betterSidebar["']\)/)
   assert.match(client, /^window\.__ModuleLoader__\.load\(\{ id: "dsh-companion"/)
   assert.match(client, /companion-notifications/)
   // The native sidebar ships the vendored stock WorkspaceBrowser, not custom styles.

@@ -61,7 +61,7 @@ const EMPTY_SNAPSHOT: unknown = { nodes: [] }
 
 /** Read the optional sidebar service off the context without a hard dependency. */
 export function sidebarOf(ctx: Context): SidebarServiceLike | undefined {
-  const candidate = (ctx as { betterSidebar?: unknown }).betterSidebar
+  const candidate = ctx.get('betterSidebar') as unknown
   if (!candidate || typeof candidate !== 'object') return undefined
   if (typeof (candidate as SidebarServiceLike).registerTab !== 'function') return undefined
   return candidate as SidebarServiceLike
@@ -302,9 +302,9 @@ const STYLE_LINES = [
  * present; styles live and die with the registration effect (HMR-safe).
  */
 export function registerImagePreviewTab(ctx: Context): void {
-  const sidebar = sidebarOf(ctx)
-  if (!sidebar) return
   ctx.effect(() => {
+    const sidebar = sidebarOf(ctx)
+    if (!sidebar) return () => {}
     const tag = document.createElement('style')
     tag.dataset.plugin = 'dsh-companion'
     tag.dataset.pluginCss = STYLE_ID

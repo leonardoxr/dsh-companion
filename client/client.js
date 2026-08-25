@@ -37,7 +37,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 		const EMPTY_SNAPSHOT = { nodes: [] };
 		/** Read the optional sidebar service off the context without a hard dependency. */
 		function sidebarOf(ctx) {
-			const candidate = ctx.betterSidebar;
+			const candidate = ctx.get("betterSidebar");
 			if (!candidate || typeof candidate !== "object") return void 0;
 			if (typeof candidate.registerTab !== "function") return void 0;
 			return candidate;
@@ -279,9 +279,9 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 		* present; styles live and die with the registration effect (HMR-safe).
 		*/
 		function registerImagePreviewTab(ctx) {
-			const sidebar = sidebarOf(ctx);
-			if (!sidebar) return;
 			ctx.effect(() => {
+				const sidebar = sidebarOf(ctx);
+				if (!sidebar) return () => {};
 				const tag = document.createElement("style");
 				tag.dataset.plugin = "dsh-companion";
 				tag.dataset.pluginCss = STYLE_ID$1;
