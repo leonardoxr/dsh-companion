@@ -2733,14 +2733,13 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 						hostDescription
 					}
 				});
-				ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
+				return ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
 					name: "sidebar.workspaces",
 					store: createWorkspaceViewStore(),
 					inject: browserInjected,
 					priority: -1,
 					locale: "workspace"
 				}, NativeWorkspaceSidebar));
-				return () => {};
 			}, "dsh-companion: native workspace sidebar");
 		}
 		//#endregion

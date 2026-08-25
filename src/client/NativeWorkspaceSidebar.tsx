@@ -17,7 +17,7 @@ interface SlotRegistryFace {
   entries(hole: string): readonly unknown[]
   subscribe(hole: string, listener: () => void): () => void
   register(options: Record<string, unknown>, component: unknown): unknown
-  inject(hole: string, factory: () => () => void): void
+  inject(hole: string, factory: () => () => void): () => void
 }
 
 type CompanionClientContext = Context & {
@@ -249,13 +249,12 @@ export function registerNativeWorkspaceSidebar(ctx: Context): void {
 
     // Reuse the stock directoryFlow declaration; duplicate child declarations
     // are rejected when the native bridge is present alongside ui-workspace.
-    ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
+    return ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
       name: 'sidebar.workspaces',
       store: createWorkspaceViewStore(),
       inject: browserInjected,
       priority: -1,
       locale: 'workspace',
     }, NativeWorkspaceSidebar as never))
-    return () => {}
   }, 'dsh-companion: native workspace sidebar')
 }
