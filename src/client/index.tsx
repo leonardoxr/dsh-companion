@@ -39,7 +39,7 @@ const OPTIONS: ReadonlyArray<{ key: SettingKey; label: string; description: stri
   { key: 'subagents', label: 'Subagent sessions', description: 'Include enabled alerts from subagent sessions.' },
 ]
 
-export const inject = ['slots', 'settingsScope', 'betterSidebar', 'sessions', 'workspaces']
+export const inject = ['slots', 'settingsScope', 'sessions', 'workspaces']
 
 function decodeSettings(value: unknown): NotificationSettings | undefined {
   if (typeof value !== 'object' || value === null) return undefined

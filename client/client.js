@@ -2794,7 +2794,6 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 		const inject = [
 			"slots",
 			"settingsScope",
-			"betterSidebar",
 			"sessions",
 			"workspaces"
 		];
