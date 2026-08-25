@@ -1,34 +1,72 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-client-ui-sidebar/client'
 import type { SessionListState } from '@deepseek-ai/dsh-client-runtime/client'
 import {
-  filterWorkspaceRows,
   isNativeWorkspaceBridge,
-  originOf,
-  sessionCountLabel,
+  mergedSessionList,
+  mergedWorkspaceList,
+  parseRemoteId,
+  type WorkspaceListStateCore,
   type NativeWorkspaceBridge,
-  type NativeWorkspaceRow,
   type NativeWorkspaceSnapshot,
 } from '../workspace-sidebar-model.js'
+import { createWorkspaceViewStore, WorkspaceBrowser } from './vendor/workspace-browser.js'
 
-const STYLE_ID = 'dsh-companion/native-workspace-sidebar'
-const REFRESH_INTERVAL_MS = 60_000
-const SHADOW_PRIORITY = -1
-
-interface NativeWorkspaceSidebarProps {
-  wide: boolean
-  expandSidebar(): void
-  useSessions<S>(selector: (state: SessionListState) => S): S
-  startSession(workspaceId?: string): void
-  open(sessionId: string): void
-  bridge: NativeWorkspaceBridge
+interface SlotRegistryFace {
+  entries(hole: string): readonly unknown[]
+  subscribe(hole: string, listener: () => void): () => void
+  register(options: Record<string, unknown>, component: unknown): unknown
+  inject(hole: string, factory: () => () => void): void
 }
 
 type CompanionClientContext = Context & {
-  sessions: { open(sessionId: string): void }
-  workspaces: { startSession(workspaceId?: string): void }
+  get(name: string): Record<string, unknown> | undefined
+  slots: SlotRegistryFace
+  sessions: {
+    open(sessionId: string): void
+    fork(input: { sessionId: string; increaseTitle?: boolean }): Promise<string>
+    search(query: string, signal: AbortSignal): Promise<{ ok: boolean; value?: { items: unknown[]; hasMore: boolean }; error?: { message: string } }>
+    searchResultLimit: number
+    binding(sessionId: string): { session: { rename(title: string): Promise<{ ok: boolean; error?: { message: string } }> } } | undefined
+  }
+  workspaces: {
+    startSession(workspaceId?: string): void
+    rename(workspaceId: string, title: string): Promise<unknown>
+    delete(workspaceId: string): Promise<unknown>
+    insertBefore(workspaceId: string, beforeWorkspaceId?: string): Promise<unknown>
+    archiveSession(sessionId: string): Promise<unknown>
+    insertSessionBefore(workspaceId: string, sessionId: string, beforeSessionId?: string): Promise<unknown>
+    create(input: { path: string }): Promise<unknown>
+  }
 }
+
+export interface InjectedFace {
+  bridge: NativeWorkspaceBridge
+  startSession(workspaceId?: string): void
+  open(sessionId: string): void
+  searchSessions(query: string, signal: AbortSignal): Promise<{ items: unknown[]; hasMore: boolean }>
+  searchResultLimit: number
+  renameSession(sessionId: string, title: string): Promise<void>
+  forkSession(sessionId: string): void
+  renameWorkspace(workspaceId: string, title: string): Promise<void>
+  deleteWorkspace(workspaceId: string): Promise<void>
+  insertWorkspaceBefore(workspaceId: string, beforeWorkspaceId?: string): Promise<void>
+  archiveSession(sessionId: string): Promise<void>
+  insertSessionBefore(workspaceId: string, sessionId: string, beforeSessionId?: string): Promise<void>
+  createWorkspace(input: { path: string }): Promise<unknown>
+  hooks: {
+    directoryFlow: { getSnapshot(): boolean; subscribe(listener: () => void): () => void }
+    hostDescription: unknown
+  }
+}
+
+type NativeWorkspaceSidebarProps = {
+  wide: boolean
+  expandSidebar(): void
+  useSessions<S>(selector: (state: SessionListState) => S): S
+  useWorkspaces<S>(selector: (state: unknown) => S): S
+} & InjectedFace & Record<string, unknown>
 
 declare global {
   interface Window {
@@ -40,125 +78,41 @@ export function nativeWorkspaceBridgeOf(value: unknown = window.dshNativeWorkspa
   return isNativeWorkspaceBridge(value) ? value : undefined
 }
 
-function installWorkspaceStyles(): () => void {
-  const existing = document.querySelector(`style[data-plugin="${STYLE_ID}"]`)
-  existing?.remove()
-  const tag = document.createElement('style')
-  tag.dataset.plugin = STYLE_ID
-  tag.textContent = `
-    .dsc-workspaces { display:flex; min-height:0; flex:1; flex-direction:column; color:var(--ds-color-text-1,#f2f2f2); }
-    .dsc-ws-head { display:flex; align-items:center; gap:8px; padding:18px 20px 10px; }
-    .dsc-ws-title { flex:1; font-size:15px; font-weight:500; color:var(--ds-color-text-2,#b9b9bd); }
-    .dsc-ws-icon { width:32px; height:32px; border:0; border-radius:8px; color:inherit; background:transparent; cursor:pointer; }
-    .dsc-ws-icon:hover,.dsc-ws-icon:focus-visible { background:var(--ds-color-bg-3,#303033); outline:none; }
-    .dsc-ws-search { margin:0 14px 8px; width:calc(100% - 28px); box-sizing:border-box; border:1px solid var(--ds-color-border-2,#3f3f43); border-radius:9px; padding:8px 10px; color:inherit; background:var(--ds-color-bg-2,#252527); }
-    .dsc-ws-scroll { min-height:0; overflow:auto; padding:2px 10px 18px; scrollbar-gutter:stable; }
-    .dsc-ws-empty,.dsc-ws-error { padding:18px 12px; color:var(--ds-color-text-3,#85858a); font-size:13px; line-height:1.45; }
-    .dsc-ws-error { color:var(--ds-color-error,#df7777); }
-    .dsc-ws-group { margin:2px 0; border-radius:10px; }
-    .dsc-ws-row { display:flex; width:100%; min-width:0; align-items:center; border-radius:9px; background:transparent; }
-    .dsc-ws-row:hover,.dsc-ws-row:focus-within { background:var(--ds-color-bg-3,#303033); }
-    .dsc-ws-main { display:flex; min-width:0; flex:1; align-items:center; gap:8px; border:0; border-radius:9px; padding:8px 4px 8px 9px; text-align:left; color:inherit; background:transparent; cursor:pointer; }
-    .dsc-ws-main:focus-visible { outline:1px solid var(--ds-color-primary,#72a7ff); outline-offset:-1px; }
-    .dsc-ws-chevron { width:12px; color:var(--ds-color-text-3,#85858a); font-size:11px; }
-    .dsc-ws-copy { min-width:0; flex:1; }
-    .dsc-ws-name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:13px; font-weight:550; }
-    .dsc-ws-meta { display:flex; min-width:0; gap:6px; margin-top:3px; color:var(--ds-color-text-3,#85858a); font-size:10px; }
-    .dsc-ws-server { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-    .dsc-ws-current { color:var(--ds-color-primary,#72a7ff); }
-    .dsc-ws-stale { opacity:.58; }
-    .dsc-ws-new { width:28px; height:28px; flex:0 0 auto; margin-right:4px; border:0; border-radius:7px; color:inherit; background:transparent; cursor:pointer; font-size:17px; }
-    .dsc-ws-new:hover,.dsc-ws-new:focus-visible { background:var(--ds-color-bg-4,#3a3a3e); outline:none; }
-    .dsc-ws-sessions { margin-left:22px; padding:0 0 4px; }
-    .dsc-session { display:flex; width:100%; min-width:0; align-items:center; gap:7px; border:0; border-radius:8px; padding:7px 9px; color:var(--ds-color-text-2,#c7c7ca); background:transparent; cursor:pointer; text-align:left; }
-    .dsc-session:hover,.dsc-session:focus-visible,.dsc-session-selected { background:var(--ds-color-bg-3,#303033); color:var(--ds-color-text-1,#fff); outline:none; }
-    .dsc-session-dot { width:5px; height:5px; flex:0 0 auto; border-radius:50%; background:var(--ds-color-text-3,#85858a); }
-    .dsc-session-label { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:12px; }
-    .dsc-ws-rail { display:flex; flex:1; align-items:flex-start; justify-content:center; padding-top:16px; }
-    .dsc-ws-rail .dsc-ws-icon { width:36px; height:36px; font-size:18px; }
-    @media (prefers-reduced-motion:no-preference) { .dsc-ws-row,.dsc-ws-main,.dsc-ws-new,.dsc-session,.dsc-ws-icon { transition:background-color 120ms ease,color 120ms ease; } }
-  `
-  document.head.append(tag)
-  return () => tag.remove()
-}
+const REFRESH_INTERVAL_MS = 60_000
 
-function WorkspaceGroup(props: {
-  row: NativeWorkspaceRow
-  expanded: boolean
-  currentOrigin: string
-  currentSessionId: string | undefined
-  onToggle(): void
-  onConnect(): void
-  onStartSession(): void
-  onOpenSession(sessionId: string): void
-}) {
-  const { row, expanded, currentOrigin, currentSessionId, onToggle, onConnect, onStartSession, onOpenSession } = props
-  const onCurrentHost = originOf(row.hostUrl) === currentOrigin
-  const sessions = row.sessions ?? []
-  return (
-    <section className={`dsc-ws-group${row.stale === true ? ' dsc-ws-stale' : ''}`}>
-      <div className="dsc-ws-row">
-        <button className="dsc-ws-main" type="button" onClick={onToggle} title={row.path}>
-          <span className="dsc-ws-chevron" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
-          <span className="dsc-ws-copy">
-            <span className="dsc-ws-name">{row.title}</span>
-            <span className="dsc-ws-meta">
-              <span className={onCurrentHost ? 'dsc-ws-server dsc-ws-current' : 'dsc-ws-server'}>{row.hostName}</span>
-              <span aria-label={`${row.totalSessions} sessions`}>{sessionCountLabel(row)}</span>
-            </span>
-          </span>
-        </button>
-        <button
-          className="dsc-ws-new"
-          type="button"
-          title={onCurrentHost ? 'New session' : `Open ${row.hostName}`}
-          aria-label={onCurrentHost ? `New session in ${row.title}` : `Open ${row.hostName}`}
-          onClick={() => {
-            if (onCurrentHost) onStartSession()
-            else onConnect()
-          }}
-        >{onCurrentHost ? '+' : '↗'}</button>
-      </div>
-      {expanded && (
-        <div className="dsc-ws-sessions">
-          {sessions.map((session) => (
-            <button
-              className={`dsc-session${onCurrentHost && currentSessionId === session.id ? ' dsc-session-selected' : ''}`}
-              type="button"
-              key={session.id}
-              title={session.cwd ?? session.title}
-              onClick={() => {
-                if (onCurrentHost) onOpenSession(session.id)
-                else onConnect()
-              }}
-            >
-              <span className="dsc-session-dot" aria-hidden="true" />
-              <span className="dsc-session-label">{session.title}</span>
-            </button>
-          ))}
-          {sessions.length === 0 && <div className="dsc-ws-empty">No sessions yet</div>}
-        </div>
-      )}
-    </section>
-  )
-}
-
+/**
+ * The sidebar region rendered by the STOCK WorkspaceBrowser, vendored verbatim
+ * from @deepseek-ai/dsh-client-ui-workspace so the result stays pixel-identical
+ * to an ordinary browser session. Cross-server workspaces enter through the
+ * same two framework hooks the component already consumes: this wrapper merges
+ * the Companion snapshot into the session/workspace states under synthetic
+ * remote:<hostId>:<id> ids, and intercepts the few row actions that would
+ * otherwise mutate another computer — those navigate DSH Native to that server.
+ */
 export function NativeWorkspaceSidebar(props: NativeWorkspaceSidebarProps) {
-  const { wide, expandSidebar, useSessions, startSession, open, bridge } = props
-  const currentSessionId = useSessions((state) => state.current)
-  const [snapshot, setSnapshot] = useState<NativeWorkspaceSnapshot | null>(null)
-  const [error, setError] = useState<string | null>(null)
-  const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set())
+  const {
+    bridge,
+    useSessions: useLocalSessions,
+    useWorkspaces: useLocalWorkspaces,
+    startSession,
+    open,
+    ...rest
+  } = props
   const currentOrigin = window.location.origin
+
+  const [snapshot, setSnapshot] = useState<NativeWorkspaceSnapshot | null>(null)
+  const snapshotRef = useRef<NativeWorkspaceSnapshot | null>(null)
+  snapshotRef.current = snapshot
 
   const load = useCallback(async (refresh: boolean) => {
     try {
       const next = refresh ? await bridge.refresh() : await bridge.getSnapshot()
       setSnapshot(next)
-      setError(null)
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause))
+      // Without an aggregate (bridge rejected — e.g. this page origin is not a
+      // saved server in DSH Native) the sidebar degrades to the plain local
+      // browser, which is exactly what ordinary pages should show.
+      console.warn('[dsh-companion] native workspace snapshot unavailable:', cause instanceof Error ? cause.message : cause)
     }
   }, [bridge])
 
@@ -170,81 +124,139 @@ export function NativeWorkspaceSidebar(props: NativeWorkspaceSidebarProps) {
     return () => window.clearInterval(timer)
   }, [load])
 
-  useEffect(() => {
-    if (snapshot === null || expanded.size > 0) return
-    const currentRows = snapshot.rows.filter((row) => originOf(row.hostUrl) === currentOrigin)
-    if (currentRows.length > 0) setExpanded(new Set(currentRows.map((row) => `${row.hostId}:${row.id}`)))
-  }, [currentOrigin, expanded.size, snapshot])
+  // Merge caches: the selector hooks demand referential stability between
+  // store notifications, so rebuilt states are keyed on their exact inputs.
+  const sessionsCache = useRef<{
+    src: SessionListState | null
+    snap: NativeWorkspaceSnapshot | null
+    out: SessionListState | null
+  } | null>(null)
+  const mergedSessions = useCallback((local: SessionListState): SessionListState => {
+    const cached = sessionsCache.current
+    if (cached !== null && cached.src === local && cached.snap === snapshotRef.current && cached.out !== null) {
+      return cached.out
+    }
+    const out = mergedSessionList(local, snapshotRef.current, currentOrigin)
+    sessionsCache.current = { src: local, snap: snapshotRef.current, out }
+    return out
+  }, [currentOrigin])
 
-  const rows = useMemo(() => filterWorkspaceRows(snapshot?.rows ?? [], query), [query, snapshot])
-  if (!wide) {
-    return (
-      <div className="dsc-ws-rail">
-        <button className="dsc-ws-icon" type="button" aria-label="Show workspaces" title="Workspaces" onClick={expandSidebar}>
-          <svg aria-hidden="true" viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.5">
-            <path d="M2.75 5.25A1.5 1.5 0 0 1 4.25 3.75h4l1.5 1.5h6A1.5 1.5 0 0 1 17.25 6.75v7A1.5 1.5 0 0 1 15.75 15.25H4.25a1.5 1.5 0 0 1-1.5-1.5z" />
-          </svg>
-        </button>
-      </div>
-    )
-  }
+  const workspacesCache = useRef<{ src: unknown; snap: NativeWorkspaceSnapshot | null; out: unknown } | null>(null)
+  const mergedWorkspaces = useCallback((local: unknown): unknown => {
+    const cached = workspacesCache.current
+    if (cached !== null && cached.src === local && cached.snap === snapshotRef.current && cached.out !== null) {
+      return cached.out
+    }
+    const out = mergedWorkspaceList(local as WorkspaceListStateCore, snapshotRef.current, currentOrigin)
+    workspacesCache.current = { src: local, snap: snapshotRef.current, out }
+    return out
+  }, [currentOrigin])
 
-  return (
-    <div className="dsc-workspaces">
-      <header className="dsc-ws-head">
-        <span className="dsc-ws-title">Workspaces</span>
-        <button className="dsc-ws-icon" type="button" aria-label="Refresh workspaces" title="Refresh" onClick={() => void load(true)}>↻</button>
-      </header>
-      <input
-        className="dsc-ws-search"
-        type="search"
-        value={query}
-        placeholder="Search workspaces"
-        aria-label="Search workspaces"
-        onChange={(event) => setQuery(event.currentTarget.value)}
-      />
-      <div className="dsc-ws-scroll">
-        {error !== null && <div className="dsc-ws-error">{error}</div>}
-        {snapshot === null && error === null && <div className="dsc-ws-empty">Loading workspaces…</div>}
-        {snapshot !== null && rows.length === 0 && <div className="dsc-ws-empty">No matching workspaces</div>}
-        {rows.map((row) => {
-          const key = `${row.hostId}:${row.id}`
-          return (
-            <WorkspaceGroup
-              key={key}
-              row={row}
-              expanded={expanded.has(key)}
-              currentOrigin={currentOrigin}
-              currentSessionId={currentSessionId}
-              onToggle={() => setExpanded((current) => {
-                const next = new Set(current)
-                if (next.has(key)) next.delete(key)
-                else next.add(key)
-                return next
-              })}
-              onConnect={() => { void bridge.connect(row.hostId) }}
-              onStartSession={() => startSession(row.id)}
-              onOpenSession={open}
-            />
-          )
-        })}
-      </div>
-    </div>
-  )
+  const useMergedSessions = useCallback(<S,>(selector: (state: SessionListState) => S): S =>
+    useLocalSessions((local: SessionListState) => selector(mergedSessions(local))), [mergedSessions, useLocalSessions])
+  const useMergedWorkspaces = useCallback(<S,>(selector: (state: unknown) => S): S =>
+    useLocalWorkspaces((local: unknown) => selector(mergedWorkspaces(local))), [mergedWorkspaces, useLocalWorkspaces])
+
+  // Remote-aware navigation actions.
+  const wrappedStartSession = useCallback((workspaceId?: string) => {
+    const remote = workspaceId === undefined ? undefined : parseRemoteId(workspaceId)
+    if (remote) void bridge.connect(remote.hostId)
+    else startSession(workspaceId)
+  }, [bridge, startSession])
+
+  const wrappedOpen = useCallback((sessionId: string) => {
+    const remote = parseRemoteId(sessionId)
+    if (remote) void bridge.connect(remote.hostId)
+    else open(sessionId)
+  }, [bridge, open])
+
+  return <WorkspaceBrowser
+    {...rest}
+    useSessions={useMergedSessions}
+    useWorkspaces={useMergedWorkspaces}
+    startSession={wrappedStartSession}
+    open={wrappedOpen}
+  />
 }
 
 export function registerNativeWorkspaceSidebar(ctx: Context): void {
   const bridge = nativeWorkspaceBridgeOf()
   if (bridge === undefined) return
   const client = ctx as CompanionClientContext
-  ctx.effect(installWorkspaceStyles, 'dsh-companion: native workspace sidebar styles')
-  client.slots.inject('sidebar.workspaces', () => client.slots.register({
+
+  // Same occupancy source the stock registration uses for its child hole, so
+  // the composed directory-picker keeps filling the Add workspace flow.
+  const flowSource = (hole: string) => ({
+    getSnapshot: () => client.slots.entries(hole).length > 0,
+    subscribe: (listener: () => void) => client.slots.subscribe(hole, listener),
+  })
+  const browserFlowSource = flowSource('sidebar.workspaces.directoryFlow')
+  let hostDescription: unknown
+  try {
+    hostDescription = client.get('connection')?.hostDescription
+  } catch {
+    hostDescription = undefined
+  }
+
+  const browserInjected = (): InjectedFace => ({
+    bridge,
+    startSession: (workspaceId) => {
+      client.workspaces.startSession(workspaceId)
+    },
+    open: (sessionId) => {
+      client.sessions.open(sessionId)
+    },
+    searchSessions: async (query, signal) => {
+      const result = await client.sessions.search(query, signal)
+      if (!result.ok) throw new Error(result.error?.message ?? 'session search failed')
+      return result.value as { items: unknown[]; hasMore: boolean }
+    },
+    searchResultLimit: client.sessions.searchResultLimit,
+    renameSession: async (sessionId, title) => {
+      const binding = client.sessions.binding(sessionId)
+      const session = binding?.session
+      if (session === undefined) throw new Error(`unknown session "${sessionId}"`)
+      const result = await session.rename(title)
+      if (!result.ok) throw new Error(result.error?.message ?? 'rename failed')
+    },
+    forkSession: (sessionId) => {
+      client.sessions.fork({ sessionId, increaseTitle: true }).then((childId) => {
+        client.sessions.open(childId)
+      }).catch(() => {})
+    },
+    renameWorkspace: async (workspaceId, title) => {
+      await client.workspaces.rename(workspaceId, title)
+    },
+    deleteWorkspace: async (workspaceId) => {
+      await client.workspaces.delete(workspaceId)
+    },
+    insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
+      await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId)
+    },
+    archiveSession: async (sessionId) => {
+      await client.workspaces.archiveSession(sessionId)
+    },
+    insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
+      await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
+    },
+    createWorkspace: (input) => client.workspaces.create(input),
+    hooks: {
+      directoryFlow: browserFlowSource,
+      hostDescription,
+    },
+  })
+
+  // Mirrors the stock ui-workspace registration one-for-one (same child hole
+  // declaration, store seat, and locale namespace); the lower priority makes
+  // this entry the shadowing winner while ui-workspace stays dormant.
+  ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
     name: 'sidebar.workspaces',
-    priority: SHADOW_PRIORITY,
-    inject: () => ({
-      bridge,
-      startSession: (workspaceId: string | undefined) => client.workspaces.startSession(workspaceId),
-      open: (sessionId: string) => client.sessions.open(sessionId),
-    }),
-  }, NativeWorkspaceSidebar))
+    children: {
+      'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
+    },
+    store: createWorkspaceViewStore(),
+    inject: browserInjected,
+    priority: -1,
+    locale: 'workspace',
+  }, NativeWorkspaceSidebar as never))
 }

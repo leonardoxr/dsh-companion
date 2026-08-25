@@ -61,10 +61,17 @@ curl http://127.0.0.1:3080/api/companion/workspaces
 
 ## DSH Native workspace sidebar
 
-DSH Native exposes a read-only, origin-checked workspace bridge to its managed local DSH page and saved DSH servers. When that bridge is present, Companion shadows only the core `sidebar.workspaces` region with the same cross-server Workspace model used by Native's Workspace Home. The normal Harness Workspace browser remains unchanged in ordinary browsers and automatically returns if Companion unloads.
+DSH Native exposes a read-only, origin-checked workspace bridge to its managed local DSH page and saved DSH servers. When that bridge is present, Companion takes over only the core `sidebar.workspaces` region and renders the **stock WorkspaceBrowser** — the exact component DeepSeek Harness ships — so the sidebar stays pixel-identical to an ordinary browser session.
 
-Workspace rows show their owning server and Session counts. Current-server Session rows open directly; choosing a Workspace or Session owned by another saved server switches DSH Native to that server. No host-management, filesystem, credential, or arbitrary IPC capability is exposed to page scripts.
+The difference is data, not chrome: Companion merges every saved server's workspaces and live sessions into the same framework hooks the stock browser already consumes, so other computers appear as first-class rows in the same grouped list, complete with the normal search, expansion state, hover cards, and Ungrouped bucket.
 
+- Remote workspaces carry their server name in the row title (`Project · my-server`) so one list stays readable across machines.
+- Opening a remote session, or pressing New Session on a remote workspace, switches DSH Native to that server through the navigation bridge — Companion remains strictly read-only and never mutates another machine.
+- Row actions that would mutate another computer (rename, fork, archive, reorder) intentionally do nothing there; manage those sessions on the owning server.
+- The page's own server is never duplicated: its rows come from the live runtime as usual.
+- Without the bridge (ordinary browsers, or pages whose origin is not saved in DSH Native) the region renders the untouched stock browser fed purely by local data.
+
+No host-management, filesystem, credential, or arbitrary IPC capability is exposed to page scripts.
 
 ## API
 

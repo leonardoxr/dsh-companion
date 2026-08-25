@@ -1,7 +1,7 @@
 import { defineConfig } from 'tsdown'
 
 const id = 'dsh-companion'
-const externals = ['react', 'react/jsx-runtime']
+const externals = ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-runtime/client', '@deepseek-ai/dsh-client-ui-primitives']
 
 export default defineConfig({
   entry: { client: 'src/client/index.tsx' },

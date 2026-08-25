@@ -1,432 +1,15 @@
-window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
-		var module = { exports: {} };
-		var exports = module.exports;
-		Object.defineProperty(exports, Symbol.toStringTag, { value: "Module" });
-		//#region \0rolldown/runtime.js
-		var __create = Object.create;
-		var __defProp = Object.defineProperty;
-		var __getOwnPropDesc = Object.getOwnPropertyDescriptor;
-		var __getOwnPropNames = Object.getOwnPropertyNames;
-		var __getProtoOf = Object.getPrototypeOf;
-		var __hasOwnProp = Object.prototype.hasOwnProperty;
-		var __copyProps = (to, from, except, desc) => {
-			if (from && typeof from === "object" || typeof from === "function") for (var keys = __getOwnPropNames(from), i = 0, n = keys.length, key; i < n; i++) {
-				key = keys[i];
-				if (!__hasOwnProp.call(to, key) && key !== except) __defProp(to, key, {
-					get: ((k) => from[k]).bind(null, key),
-					enumerable: !(desc = __getOwnPropDesc(from, key)) || desc.enumerable
-				});
-			}
-			return to;
-		};
-		var __toESM = (mod, isNodeMode, target) => (target = mod != null ? __create(__getProtoOf(mod)) : {}, __copyProps(isNodeMode || !mod || !mod.__esModule || !__hasOwnProp.call(mod, "default") ? __defProp(target, "default", {
-			value: mod,
-			enumerable: true
-		}) : target, mod));
-		//#endregion
-		let react = require("react");
-		react = __toESM(react, 1);
-		let react_jsx_runtime = require("react/jsx-runtime");
-		react_jsx_runtime = __toESM(react_jsx_runtime, 1);
-		let _deepseek_ai_dsh_client_runtime_client = require("@deepseek-ai/dsh-client-runtime/client");
-		_deepseek_ai_dsh_client_runtime_client = __toESM(_deepseek_ai_dsh_client_runtime_client, 1);
-		let _deepseek_ai_dsh_client_ui_primitives = require("@deepseek-ai/dsh-client-ui-primitives");
-		_deepseek_ai_dsh_client_ui_primitives = __toESM(_deepseek_ai_dsh_client_ui_primitives, 1);
-		//#region src/client/ImagePreviewTab.tsx
-		const IMAGE_PREVIEW_TAB_ID = "dsh-companion:image-preview";
-		const EMPTY_SNAPSHOT = { nodes: [] };
-		/** Read the optional sidebar service off the context without a hard dependency. */
-		function sidebarOf(ctx) {
-			const candidate = ctx.betterSidebar;
-			if (!candidate || typeof candidate !== "object") return void 0;
-			if (typeof candidate.registerTab !== "function") return void 0;
-			return candidate;
-		}
-		function isAttachmentRef(value) {
-			return typeof value === "object" && value !== null && typeof value.attachmentId === "string";
-		}
-		/** Content-block image arm (user/steering/context/tool-result content). */
-		function asContentImageBlock(value) {
-			if (typeof value !== "object" || value === null) return void 0;
-			if (value.type !== "image") return void 0;
-			const attachment = value.attachment;
-			return isAttachmentRef(attachment) ? attachment : void 0;
-		}
-		/**
-		* Collect unique image attachments from one conversation snapshot, in
-		* timeline order: user/steering/context content blocks, assistant image
-		* blocks, and tool-result content (e.g. a read_image tool result).
-		*/
-		function collectPreviewImages(snapshot) {
-			const nodes = snapshot?.nodes;
-			if (!Array.isArray(nodes)) return [];
-			const seen = /* @__PURE__ */ new Set();
-			const images = [];
-			const record = (attachment) => {
-				if (!isAttachmentRef(attachment)) return;
-				if (seen.has(attachment.attachmentId)) return;
-				seen.add(attachment.attachmentId);
-				images.push(attachment);
-			};
-			for (const node of nodes) {
-				if (!node || typeof node !== "object") continue;
-				const kind = node.kind;
-				if (kind === "assistant") {
-					const blocks = node.blocks;
-					if (!Array.isArray(blocks)) continue;
-					for (const block of blocks) if (typeof block === "object" && block !== null && block.kind === "image") record(block.attachment);
-				} else if (kind === "user" || kind === "steering" || kind === "context" || kind === "tool-result") {
-					const content = node.content;
-					if (!Array.isArray(content)) continue;
-					for (const block of content) record(asContentImageBlock(block));
-				}
-			}
-			return images;
-		}
-		function formatDimensions(image) {
-			return image.width > 0 && image.height > 0 ? String(image.width) + "×" + String(image.height) : "—";
-		}
-		function formatBytes(bytes) {
-			if (!Number.isFinite(bytes) || bytes <= 0) return "—";
-			if (bytes < 1024) return String(bytes) + " B";
-			if (bytes < 1048576) return (bytes / 1024).toFixed(0) + " KB";
-			return (bytes / 1048576).toFixed(1) + " MB";
-		}
-		/** Copy RPC bytes into an exact-size ArrayBuffer accepted by Blob in every TS lib. */
-		function toBlobPart(data) {
-			return data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
-		}
-		function ImagePreviewTab({ ctx, scope, visible }) {
-			const session = (0, react.useMemo)(() => {
-				return ctx.sessions?.binding?.(scope.sessionId)?.session ?? null;
-			}, [ctx, scope.sessionId]);
-			const subscribe = (0, react.useCallback)((listener) => session?.subscribe(listener) ?? (() => {}), [session]);
-			const getSnapshot = (0, react.useCallback)(() => session?.getSnapshot() ?? EMPTY_SNAPSHOT, [session]);
-			const snapshot = (0, react.useSyncExternalStore)(subscribe, getSnapshot, getSnapshot);
-			const images = (0, react.useMemo)(() => collectPreviewImages(snapshot), [snapshot]);
-			const imagesRef = (0, react.useRef)(images);
-			imagesRef.current = images;
-			const imageKey = images.map((image) => image.attachmentId).join("\n");
-			const cacheRef = (0, react.useRef)(/* @__PURE__ */ new Map());
-			const [, bump] = (0, react.useReducer)((count) => count + 1, 0);
-			const [selectedId, setSelectedId] = (0, react.useState)();
-			const [retryTick, setRetryTick] = (0, react.useState)(0);
-			(0, react.useEffect)(() => {
-				const cache = cacheRef.current;
-				return () => {
-					for (const entry of cache.values()) if (entry.status === "ready") URL.revokeObjectURL(entry.url);
-					cache.clear();
-				};
-			}, [session]);
-			(0, react.useEffect)(() => {
-				if (!session || !visible) return;
-				const pending = imagesRef.current.filter((image) => !cacheRef.current.has(image.attachmentId));
-				if (pending.length === 0) return;
-				let cancelled = false;
-				for (const image of pending) cacheRef.current.set(image.attachmentId, { status: "loading" });
-				bump();
-				Promise.all(pending.map(async (image) => {
-					try {
-						const result = await session.readAttachment(image.attachmentId);
-						if (cancelled) return;
-						if (result.ok) {
-							const mediaType = result.value.attachment.mediaType || "image/png";
-							const url = URL.createObjectURL(new Blob([toBlobPart(result.value.data)], { type: mediaType }));
-							cacheRef.current.set(image.attachmentId, {
-								status: "ready",
-								url
-							});
-						} else cacheRef.current.set(image.attachmentId, {
-							status: "error",
-							message: result.error.message
-						});
-					} catch (cause) {
-						if (cancelled) return;
-						cacheRef.current.set(image.attachmentId, {
-							status: "error",
-							message: cause instanceof Error ? cause.message : String(cause)
-						});
-					}
-					if (!cancelled) bump();
-				}));
-				return () => {
-					cancelled = true;
-				};
-			}, [
-				session,
-				visible,
-				imageKey,
-				retryTick
-			]);
-			(0, react.useEffect)(() => {
-				if (selectedId === void 0) return;
-				const onKey = (event) => {
-					if (event.key === "Escape") setSelectedId(void 0);
-				};
-				window.addEventListener("keydown", onKey);
-				return () => window.removeEventListener("keydown", onKey);
-			}, [selectedId]);
-			const retry = (0, react.useCallback)(() => {
-				for (const [id, entry] of cacheRef.current) if (entry.status === "error") cacheRef.current.delete(id);
-				setRetryTick((tick) => tick + 1);
-			}, []);
-			if (!session) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				className: "dsc-img-tab",
-				children: /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					className: "dsc-img-empty",
-					children: "Select a conversation to browse its images."
-				})
-			});
-			if (images.length === 0) return /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-				className: "dsc-img-tab",
-				children: /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					className: "dsc-img-empty",
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("b", { children: "No images yet" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: "Attachments you send and images the model reads appear here." })]
-				})
-			});
-			const selectedEntry = selectedId !== void 0 ? cacheRef.current.get(selectedId) : void 0;
-			const selectedImage = selectedId !== void 0 ? images.find((image) => image.attachmentId === selectedId) : void 0;
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-				className: "dsc-img-tab",
-				children: [
-					/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-						className: "dsc-img-count",
-						children: [
-							images.length,
-							" image",
-							images.length === 1 ? "" : "s",
-							" in this conversation"
-						]
-					}),
-					/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: "dsc-img-grid",
-						children: images.map((image) => {
-							const entry = cacheRef.current.get(image.attachmentId);
-							return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("figure", {
-								className: "dsc-img-tile",
-								onClick: () => {
-									if (entry?.status === "ready") setSelectedId(image.attachmentId);
-								},
-								children: [entry?.status === "ready" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("img", {
-									className: "dsc-img-thumb",
-									src: entry.url,
-									alt: image.name || "Image attachment",
-									loading: "lazy",
-									draggable: false
-								}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-									className: "dsc-img-thumb " + (entry?.status === "error" ? "dsc-img-broken" : "dsc-img-loading"),
-									children: entry?.status === "error" ? /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-										title: entry.message,
-										onClick: (event) => {
-											event.stopPropagation();
-											retry();
-										},
-										children: "Retry"
-									}) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: "Loading..." })
-								}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("figcaption", {
-									className: "dsc-img-meta",
-									children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: image.name || "Image" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: formatDimensions(image) + " · " + formatBytes(image.bytes) })]
-								})]
-							}, image.attachmentId);
-						})
-					}),
-					selectedId !== void 0 && selectedEntry?.status === "ready" && /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-						className: "dsc-img-lightbox",
-						role: "dialog",
-						"aria-modal": "true",
-						onClick: () => setSelectedId(void 0),
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-							className: "dsc-img-lightbox-bar",
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", { children: selectedImage ? (selectedImage.name || "Image") + " — " + formatDimensions(selectedImage) + " · " + formatBytes(selectedImage.bytes) : "" }), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-								className: "dsc-img-close",
-								type: "button",
-								onClick: () => setSelectedId(void 0),
-								children: "Close"
-							})]
-						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("img", {
-							src: selectedEntry.url,
-							alt: selectedImage?.name || "Image attachment",
-							draggable: false,
-							onClick: (event) => event.stopPropagation()
-						})]
-					})
-				]
-			});
-		}
-		const STYLE_ID$1 = "dsh-companion/image-preview";
-		const STYLE_LINES = [
-			".dsc-img-tab{box-sizing:border-box;height:100%;overflow:auto;padding:14px;color:var(--dsw-alias-label-primary,#111);font-size:13px;line-height:18px}",
-			".dsc-img-tab *{box-sizing:border-box}",
-			".dsc-img-count{margin-bottom:10px;color:var(--dsw-alias-label-tertiary,#777);font-size:12px}",
-			".dsc-img-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:10px}",
-			".dsc-img-tile{margin:0;border:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.12));border-radius:10px;overflow:hidden;background:var(--dsw-alias-bg-elevated,#fff);cursor:pointer;display:flex;flex-direction:column;min-width:0}",
-			".dsc-img-tile:hover{border-color:var(--dsw-alias-accent-primary,#4c7dff)}",
-			".dsc-img-thumb{width:100%;height:112px;display:block;object-fit:cover;background:var(--dsw-alias-bg-layer-2,#f3f3f3)}",
-			".dsc-img-thumb.dsc-img-loading,.dsc-img-thumb.dsc-img-broken{display:flex;align-items:center;justify-content:center;color:var(--dsw-alias-label-tertiary,#888);font-size:11px;text-align:center;padding:6px}",
-			".dsc-img-thumb.dsc-img-broken{cursor:pointer;color:var(--dsw-alias-label-danger,#d44)}",
-			".dsc-img-meta{display:flex;flex-direction:column;gap:1px;padding:6px 8px;border-top:1px solid var(--dsw-alias-border-l2,rgba(0,0,0,.08));font-size:11px;color:var(--dsw-alias-label-secondary,#555)}",
-			".dsc-img-meta span:first-child{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:500;color:inherit}",
-			".dsc-img-empty{display:flex;flex-direction:column;gap:4px;align-items:flex-start;margin-top:32px;color:var(--dsw-alias-label-tertiary,#777)}",
-			".dsc-img-empty b{color:var(--dsw-alias-label-primary,#111);font-size:14px}",
-			".dsc-img-lightbox{position:fixed;inset:0;z-index:60;background:rgba(0,0,0,.74);padding:44px 20px 24px;display:flex;align-items:center;justify-content:center}",
-			".dsc-img-lightbox img{max-width:min(1100px,100%);max-height:100%;object-fit:contain;border-radius:8px;box-shadow:0 12px 48px rgba(0,0,0,.55)}",
-			".dsc-img-lightbox-bar{position:absolute;top:12px;left:18px;right:18px;display:flex;align-items:center;justify-content:space-between;gap:12px;color:#fff;font-size:12px}",
-			".dsc-img-close{border:1px solid rgba(255,255,255,.35);background:rgba(255,255,255,.12);color:#fff;border-radius:7px;padding:5px 12px;font-size:12px;cursor:pointer}",
-			".dsc-img-close:hover{background:rgba(255,255,255,.22)}"
-		];
-		/**
-		* Register the Images tab when the optional dsh-better-sidebar service is
-		* present; styles live and die with the registration effect (HMR-safe).
-		*/
-		function registerImagePreviewTab(ctx) {
-			const sidebar = sidebarOf(ctx);
-			if (!sidebar) return;
-			ctx.effect(() => {
-				const tag = document.createElement("style");
-				tag.dataset.plugin = "dsh-companion";
-				tag.dataset.pluginCss = STYLE_ID$1;
-				tag.textContent = STYLE_LINES.join("\n");
-				document.head.append(tag);
-				const disposeTab = sidebar.registerTab({
-					id: IMAGE_PREVIEW_TAB_ID,
-					title: () => "Images",
-					order: 55,
-					single: true,
-					component: ImagePreviewTab
-				});
-				return () => {
-					disposeTab();
-					tag.remove();
-				};
-			}, "dsh-companion: image preview tab");
-		}
-		//#endregion
-		//#region src/workspace-sidebar-model.ts
-		/** Structural guard for the DSH Native preload bridge. */
-		function isNativeWorkspaceBridge(value) {
-			if (typeof value !== "object" || value === null) return false;
-			const candidate = value;
-			return typeof candidate.getSnapshot === "function" && typeof candidate.refresh === "function" && typeof candidate.connect === "function";
-		}
-		function originOf(value) {
-			try {
-				return new URL(value).origin;
-			} catch {
-				return null;
-			}
-		}
-		const REMOTE_PREFIX = "remote:";
-		/** Synthetic id for a remote workspace or session row. */
-		function remoteId(hostId, id) {
-			return `${REMOTE_PREFIX}${hostId}:${id}`;
-		}
-		/** Split a synthetic remote id back into its host and native halves. */
-		function parseRemoteId(id) {
-			if (!id.startsWith("remote:")) return void 0;
-			const rest = id.slice(7);
-			const sep = rest.indexOf(":");
-			if (sep <= 0 || sep === rest.length - 1) return void 0;
-			return {
-				hostId: rest.slice(0, sep),
-				id: rest.slice(sep + 1)
-			};
-		}
-		/**
-		* Rows contributed by the server the page already runs on are dropped: that
-		* server is rendered natively by the live runtime hooks, and duplicating it
-		* would list every local workspace twice.
-		*/
-		function externalRows(snapshot, currentOrigin) {
-			if (snapshot === null) return [];
-			return snapshot.rows.filter((row) => {
-				const rowOrigin = originOf(row.hostUrl);
-				return rowOrigin !== null && rowOrigin !== currentOrigin;
-			});
-		}
-		function iso(epoch) {
-			return new Date(epoch).toISOString();
-		}
-		/**
-		* Synthetic WorkspaceView rows for every workspace owned by another saved
-		* server, most-recent-first as delivered by the aggregator. Titles carry the
-		* owning server name so rows stay distinguishable inside one list; everything
-		* else matches the wire projection field-for-field.
-		*/
-		function remoteWorkspaceViews(snapshot, currentOrigin) {
-			return externalRows(snapshot, currentOrigin).map((row) => ({
-				workspaceId: remoteId(row.hostId, row.id),
-				path: row.path,
-				title: `${row.title} · ${row.hostName}`,
-				sessionIds: (row.sessions ?? []).map((session) => remoteId(row.hostId, session.id)),
-				createdAt: iso(row.updatedAt),
-				updatedAt: iso(row.updatedAt)
-			}));
-		}
-		/**
-		* Synthetic SessionSummary rows for sessions of external servers, including
-		* orphans (sessions no workspace claims — the stock browser files them under
-		* Ungrouped exactly like local orphans).
-		*/
-		function remoteSessionSummaries(snapshot, currentOrigin) {
-			if (snapshot === null) return [];
-			const summaries = [];
-			const push = (hostId, session) => {
-				summaries.push({
-					id: remoteId(hostId, session.id),
-					displayTitle: session.title,
-					cwd: session.cwd ?? void 0,
-					running: false,
-					blank: false,
-					updatedAt: session.updatedAt
-				});
-			};
-			for (const row of externalRows(snapshot, currentOrigin)) for (const session of row.sessions ?? []) push(row.hostId, session);
-			for (const orphan of snapshot.orphanSessions ?? []) {
-				const orphanOrigin = originOf(orphan.hostUrl);
-				if (orphanOrigin === null || orphanOrigin === currentOrigin) continue;
-				push(orphan.hostId, orphan);
-			}
-			return summaries;
-		}
-		/**
-		* Local session list plus every external-server session as synthetic rows.
-		* Returns the input unchanged when there is nothing to add, so callers keep
-		* referential stability across purely local updates.
-		*/
-		function mergedSessionList(local, snapshot, currentOrigin) {
-			const extra = remoteSessionSummaries(snapshot, currentOrigin);
-			if (extra.length === 0) return local;
-			const byId = { ...local.byId };
-			const ids = [...local.ids];
-			for (const summary of extra) {
-				if (byId[summary.id] !== void 0) continue;
-				byId[summary.id] = summary;
-				ids.push(summary.id);
-			}
-			return {
-				...local,
-				ids,
-				byId
-			};
-		}
-		/**
-		* Local workspace list plus one synthetic view per external workspace.
-		* Remote groups append after the local durable order so "other computers"
-		* reads as a contiguous tail of the same list.
-		*/
-		function mergedWorkspaceList(local, snapshot, currentOrigin) {
-			const views = remoteWorkspaceViews(snapshot, currentOrigin);
-			if (views.length === 0) return local;
-			const known = new Set(local.items.map((item) => item.workspaceId));
-			const additions = views.filter((view) => !known.has(view.workspaceId));
-			if (additions.length === 0) return local;
-			return {
-				...local,
-				items: [...local.items, ...additions]
-			};
-		}
-		//#endregion
-		//#region src/client/vendor/workspace-browser.js
+// Vendored from @deepseek-ai/dsh-client-ui-workspace@0.1.1-rc.2 (lib/client.js, MIT).
+// Provenance: DeepSeek Harness distribution copy, kept verbatim so the native
+// workspace sidebar renders the STOCK WorkspaceBrowser pixel-for-pixel.
+// Mechanical changes only: ModuleLoader wrapper stripped, the four runtime
+// requires converted to ESM imports, upstream apply/inject exports dropped,
+// and the two symbols we consume re-exported at the bottom. All upstream
+// comments and logic are untouched.
+import * as _deepseek_ai_dsh_client_runtime_client from "@deepseek-ai/dsh-client-runtime/client";
+		import * as react_jsx_runtime from "react/jsx-runtime";
+		import * as react from "react";
+		import * as _deepseek_ai_dsh_client_ui_primitives from "@deepseek-ai/dsh-client-ui-primitives";
+		//#region lib/types/client/stores.js
 		/**
 		* The workspace browser's viewing store: the session-list grouping mode,
 		* persisted across reloads. Module level exports the factory only (a
@@ -476,6 +59,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				}
 			});
 		}
+		//#endregion
+		//#region ../../../node_modules/.pnpm/clsx@2.1.1/node_modules/clsx/dist/clsx.mjs
 		function r(e) {
 			var t, f, n = "";
 			if ("string" == typeof e || "number" == typeof e) n += e;
@@ -745,6 +330,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				n: Math.floor(diff / (365 * DAY))
 			};
 		}
+		//#endregion
+		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-workspace/src/client/rows/Rows.module.css.mjs
 		const css$2 = ".YDXeBa_projectRow,.YDXeBa_sessionRow{cursor:pointer;user-select:none;color:var(--dsw-alias-label-primary);border-radius:8px;align-items:center;gap:6px;padding:0 8px;display:flex}.YDXeBa_projectRow:hover,.YDXeBa_sessionRow:hover,.YDXeBa_sessionRow.YDXeBa_selected{background:var(--dsw-alias-interactive-bg-hover)}.YDXeBa_searchResultRow{box-sizing:border-box;cursor:pointer;text-align:left;width:100%;min-height:48px;color:var(--dsw-alias-label-primary);background:0 0;border:none;border-radius:8px;flex-direction:column;align-items:stretch;padding:4px 8px;display:flex}.YDXeBa_searchResultRow:hover,.YDXeBa_searchResultRow.YDXeBa_selected{background:var(--dsw-alias-interactive-bg-hover)}.YDXeBa_searchResultHeading{align-items:center;min-width:0;display:flex}.YDXeBa_searchResultTitle{text-overflow:ellipsis;white-space:nowrap;min-width:0;margin-left:4px;font-size:14px;line-height:20px;overflow:hidden}.YDXeBa_searchResultMeta{align-items:center;gap:6px;min-width:0;margin-left:20px;display:flex}.YDXeBa_searchResultWorkspace,.YDXeBa_searchResultSnippet{text-overflow:ellipsis;white-space:nowrap;font-size:12px;line-height:17px;overflow:hidden}.YDXeBa_searchResultWorkspace{max-width:40%;color:var(--dsw-alias-label-tertiary);flex:none}.YDXeBa_searchResultSnippet{min-width:0;color:var(--dsw-alias-label-secondary);flex:1}.YDXeBa_projectRow{box-sizing:border-box;align-items:center;height:34px}.YDXeBa_projectRow .YDXeBa_rowActions{height:20px}.YDXeBa_sessionRow{height:32px;animation:YDXeBa_row-in .15s var(--ds-ease-in-out);gap:0}.YDXeBa_sessionRow .YDXeBa_title{margin:0 6px 0 4px}.YDXeBa_flatSessionRowWithoutStatus .YDXeBa_title{margin-left:0}@keyframes YDXeBa_row-in{0%{opacity:0}}.YDXeBa_slot{width:16px;height:20px;color:var(--dsw-alias-label-tertiary);flex:none;justify-content:center;align-items:center;display:inline-flex}.YDXeBa_visuallyHidden{clip:rect(0 0 0 0);white-space:nowrap;width:1px;height:1px;position:absolute;overflow:hidden}.YDXeBa_folderActive{color:var(--dsw-alias-state-business-primary)}.YDXeBa_projectRow .YDXeBa_chevron{display:none}.YDXeBa_projectRow:hover .YDXeBa_chevron{display:inline-flex}.YDXeBa_projectRow:hover .YDXeBa_folder{display:none}.YDXeBa_arrow{transition:transform .15s var(--ds-ease-in-out)}.YDXeBa_arrowOpen{transform:rotate(90deg)}.YDXeBa_projectText{flex-direction:column;flex:1;gap:2px;min-width:0;display:flex}.YDXeBa_title{text-overflow:ellipsis;white-space:nowrap;min-width:0;font-size:14px;line-height:20px;overflow:hidden}.YDXeBa_renameInput{border:1px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-button-elevated-fill);min-width:0;color:inherit;border-radius:4px;outline:none;padding:0 2px;font-size:14px;line-height:20px}.YDXeBa_sessionRow .YDXeBa_title{flex:1}.YDXeBa_meta{text-overflow:ellipsis;white-space:nowrap;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:20px;overflow:hidden}.YDXeBa_time{color:var(--dsw-alias-label-tertiary);flex:none;font-size:12px;line-height:20px}.YDXeBa_dot{flex:none}.YDXeBa_rowActions{flex:none;align-items:center;gap:12px;display:none}.YDXeBa_projectRow:hover .YDXeBa_rowActions,.YDXeBa_sessionRow:hover .YDXeBa_rowActions,.YDXeBa_projectRow.YDXeBa_menuOpen .YDXeBa_rowActions,.YDXeBa_sessionRow.YDXeBa_menuOpen .YDXeBa_rowActions{display:inline-flex}.YDXeBa_sessionRow:hover .YDXeBa_time,.YDXeBa_sessionRow.YDXeBa_menuOpen .YDXeBa_time{display:none}.YDXeBa_projectRow.YDXeBa_menuOpen,.YDXeBa_sessionRow.YDXeBa_menuOpen{background:var(--dsw-alias-interactive-bg-hover)}.YDXeBa_sessionRow.YDXeBa_dropBefore,.YDXeBa_sessionRow.YDXeBa_dropAfter{position:relative}.YDXeBa_sessionRow.YDXeBa_dropBefore:before,.YDXeBa_sessionRow.YDXeBa_dropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:4px}.YDXeBa_sessionRow.YDXeBa_dropBefore:before{top:-7px}.YDXeBa_sessionRow.YDXeBa_dropAfter:after{bottom:-7px}.YDXeBa_hoverContent{flex-direction:column;gap:8px;display:flex}.YDXeBa_hoverTitle{color:#fff;overflow-wrap:break-word;font-size:14px;line-height:20px}.YDXeBa_hoverPath{color:#cfd3d6;word-break:break-all;font-size:12px;line-height:16px}.YDXeBa_hoverTime{color:#cfd3d6;font-size:12px;line-height:16px}.YDXeBa_hoverStatus{color:#adb2b8;align-items:center;gap:8px;font-size:12px;line-height:20px;display:flex}.YDXeBa_iconButton{cursor:pointer;width:16px;height:16px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:4px;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.YDXeBa_iconButton:hover{color:var(--dsw-alias-label-primary)}.YDXeBa_chevron{color:var(--dsw-alias-label-caption)}@media (prefers-reduced-motion:reduce){.YDXeBa_sessionRow,.YDXeBa_arrow{transition:none;animation:none}}";
 		const tagId$2 = "@deepseek-ai/dsh-client-ui-workspace/Rows.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$2) + "]") === null) {
@@ -790,6 +377,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			"title": "YDXeBa_title",
 			"visuallyHidden": "YDXeBa_visuallyHidden"
 		};
+		//#endregion
+		//#region lib/types/client/rows/Rows.js
 		/**
 		* Workspace browser tree row components (figma Cell set 14:3080): pure presentational —
 		* all data and callbacks arrive via props. Hover swaps (folder->chevron,
@@ -1206,6 +795,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				copiedLabel: t("hover.copied")
 			});
 		}
+		//#endregion
+		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-workspace/src/client/WorkspacePicker.module.css.mjs
 		const css$1 = "._G5b-a_modalAction{min-width:72px}._G5b-a_modalError,._G5b-a_menuStatus{margin-top:8px;font-size:12px;line-height:18px}._G5b-a_modalError{color:var(--dsw-alias-state-error-primary)}._G5b-a_menuStatus{color:var(--dsw-alias-label-secondary)}";
 		const tagId$1 = "@deepseek-ai/dsh-client-ui-workspace/WorkspacePicker.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId$1) + "]") === null) {
@@ -1220,6 +811,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			"modalAction": "_G5b-a_modalAction",
 			"modalError": "_G5b-a_modalError"
 		};
+		//#endregion
+		//#region lib/types/client/WorkspacePicker.js
 		const ADD_WORKSPACE = "::add-workspace";
 		/**
 		* Render the pick menu plus the adoption error dialog.
@@ -1352,6 +945,28 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				})
 			] });
 		}
+		/**
+		* The conversation empty-state registration: adapts the owner share to the
+		* core flow (all state and semantics live in the flow / the owner).
+		* @param props - empty-state slot props (owner share + injected creation callback).
+		* @returns the flow element.
+		*/
+		function WorkspacePicker({ open, anchorRef, useWorkspaces, selectedId, onPick, onClose, createWorkspace, useDirectoryFlow, renderSlot, t }) {
+			return (0, react_jsx_runtime.jsx)(WorkspacePickFlow, {
+				t,
+				open,
+				anchorRef,
+				useWorkspaces,
+				createWorkspace,
+				useDirectoryFlow,
+				renderDirectoryFlow: (owner) => renderSlot("conversation.hero.workspace.directoryFlow", owner),
+				selectedId,
+				onPick,
+				onClose
+			});
+		}
+		//#endregion
+		//#region \0dsh-css:/home/runner/work/deepseek-harness/deepseek-harness/packages/client/ui-workspace/src/client/WorkspaceBrowser.module.css.mjs
 		const css = ".qDHVXG_root{--dsh-session-list-edge-inset:var(--dsh-sidebar-inline-padding);--dsh-session-list-scrollbar-width:8px;--dsh-session-list-scrollbar-offset:2px;box-sizing:border-box;min-height:0;padding-right:var(--dsh-session-list-edge-inset);flex-direction:column;flex:1;display:flex}.qDHVXG_root.qDHVXG_rail{padding-right:0}.qDHVXG_iconButton{cursor:pointer;width:28px;height:28px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.qDHVXG_iconButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.qDHVXG_sectionHeader{box-sizing:border-box;height:36px;color:var(--dsw-alias-label-tertiary);border-radius:12px;flex:none;justify-content:flex-end;align-items:center;gap:4px;margin-bottom:4px;padding-left:4px;display:flex;overflow:hidden}.qDHVXG_root:not(.qDHVXG_rail) .qDHVXG_sectionHeader{margin-top:2px;margin-right:-4px}.qDHVXG_sectionLabel{white-space:nowrap;opacity:1;visibility:visible;min-width:0;max-width:45%;transition:max-width .18s var(--ds-ease-in-out), margin-right .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;line-height:20px;overflow:hidden}.qDHVXG_sectionLabelHidden{opacity:0;visibility:hidden;max-width:0;margin-right:-4px;transition-delay:0s,0s,0s,0s,.18s;transform:translate(-4px)}.qDHVXG_searchSlot{box-sizing:border-box;min-width:0;max-width:28px;transition:max-width .18s var(--ds-ease-in-out), padding-left .18s var(--ds-ease-in-out);flex:1;align-items:center;margin-left:auto;padding-left:0;display:flex}.qDHVXG_searchSlotExpanded{max-width:100%;padding-left:0}.qDHVXG_headerActions{opacity:1;visibility:visible;max-width:60px;transition:max-width .18s var(--ds-ease-in-out), opacity .12s var(--ds-ease-in-out), transform .18s var(--ds-ease-in-out), visibility 0s linear;flex:none;align-items:center;gap:4px;display:flex;overflow:hidden}.qDHVXG_headerActionsHidden{opacity:0;visibility:hidden;pointer-events:none;max-width:0;transition-delay:0s,0s,0s,.18s;transform:translate(4px)}.qDHVXG_search{box-sizing:border-box;cursor:text;width:100%;height:28px;color:var(--dsw-alias-label-secondary);transition:width .18s var(--ds-ease-in-out), padding .18s var(--ds-ease-in-out), border-color .18s var(--ds-ease-in-out), background-color .18s var(--ds-ease-in-out);background:0 0;border:none;border-radius:50%;flex:none;align-items:center;gap:0;margin:0;padding:0;display:flex;overflow:hidden}.qDHVXG_searchExpanded{border:1px solid var(--dsw-alias-border-l2);width:calc(100% + 4px);height:30px;color:var(--dsw-alias-label-caption);background:0 0;border-radius:10px;margin-inline:-2px;padding:0 4px 0 0}.qDHVXG_searchButton{cursor:pointer;width:28px;height:28px;color:inherit;background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.qDHVXG_searchExpanded .qDHVXG_searchButton{width:28px;height:30px}.qDHVXG_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.qDHVXG_searchExpanded .qDHVXG_searchButton:hover{background:0 0}.qDHVXG_searchInput{opacity:0;pointer-events:none;width:0;min-width:0;color:var(--dsw-alias-label-primary);transition:opacity .12s var(--ds-ease-in-out);background:0 0;border:none;outline:none;flex:1;font-size:13px;line-height:18px}.qDHVXG_searchExpanded .qDHVXG_searchInput{opacity:1;pointer-events:auto;margin-left:-2px}.qDHVXG_searchInput::placeholder{color:var(--dsw-alias-label-tertiary)}.qDHVXG_clearButton{cursor:pointer;width:24px;height:24px;color:var(--dsw-alias-label-secondary);background:0 0;border:none;border-radius:50%;flex:none;justify-content:center;align-items:center;padding:0;display:inline-flex}.qDHVXG_clearButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.qDHVXG_rail .qDHVXG_sectionHeader{justify-content:flex-start;gap:0;margin-bottom:12px;padding-left:0}.qDHVXG_rail .qDHVXG_headerActions{max-width:none}.qDHVXG_rail .qDHVXG_iconButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}.qDHVXG_rail .qDHVXG_search{background:0 0;border-color:#0000;gap:0;width:36px;height:36px;margin:0 0 12px;padding:0}.qDHVXG_rail .qDHVXG_searchButton{width:36px;height:36px;color:var(--dsw-alias-label-primary)}.qDHVXG_rail .qDHVXG_searchButton:hover{background:var(--dsw-alias-interactive-bg-hover)}.qDHVXG_listArea{min-height:0;margin-left:-4px;margin-right:calc(-1 * var(--dsh-session-list-edge-inset));flex-direction:column;flex:1;padding-left:4px;display:flex;overflow:visible}.qDHVXG_rail .qDHVXG_listArea{margin-left:0;margin-right:0;padding-left:0}.qDHVXG_treeBody{flex-direction:column;flex:1;min-height:0;display:flex;position:relative}.qDHVXG_fade{left:0;right:var(--dsh-session-list-edge-inset);background:linear-gradient(to bottom, transparent, var(--dsw-specific-sidebar-fill));pointer-events:none;height:24px;position:absolute;bottom:0}.qDHVXG_wide{animation:qDHVXG_wide-in .2s var(--ds-ease-in-out)}@keyframes qDHVXG_wide-in{0%{opacity:0}}.qDHVXG_list{min-height:0;margin-left:-4px;margin-right:var(--dsh-session-list-scrollbar-offset);padding-left:4px;padding-right:calc(var(--dsh-session-list-edge-inset) - var(--dsh-session-list-scrollbar-width) - var(--dsh-session-list-scrollbar-offset));scrollbar-gutter:stable;flex:1;padding-bottom:16px;overflow-y:auto}.qDHVXG_flatList>*+*,.qDHVXG_searchTree>[role=treeitem]+[role=treeitem],.qDHVXG_groupSection>*+*{margin-top:2px}.qDHVXG_searchStatus,.qDHVXG_searchWarning{color:var(--dsw-alias-label-tertiary);padding:10px 12px;font-size:12px;line-height:18px}.qDHVXG_searchWarning{color:var(--dsw-alias-label-secondary)}.qDHVXG_groupSection{position:relative}.qDHVXG_groupSection+.qDHVXG_groupSection{margin-top:4px}.qDHVXG_listTopDropIndicator,.qDHVXG_workspaceDropBefore:before,.qDHVXG_workspaceDropAfter:after{content:\"\";z-index:1;background:linear-gradient(55deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 0 / 5px 7px no-repeat, linear-gradient(125deg, transparent calc(50% - 1px), var(--dsw-alias-state-business-primary) calc(50% - 1px) calc(50% + 1px), transparent calc(50% + 1px)) 0 5px / 5px 7px no-repeat, linear-gradient(var(--dsw-alias-state-business-primary) 0 0) 4px 5px / calc(100% - 4px) 2px no-repeat;pointer-events:none;height:12px;position:absolute;left:0;right:0}.qDHVXG_listTopDropIndicator{top:-8px;left:0;right:var(--dsh-session-list-edge-inset)}.qDHVXG_listTopDropActive>.qDHVXG_workspaceDropBefore:first-child:before{display:none}.qDHVXG_workspaceDropBefore:before{top:-8px}.qDHVXG_workspaceDropAfter:after{bottom:-8px}.qDHVXG_sessionOverflowButton{cursor:pointer;text-align:left;width:100%;height:28px;color:var(--dsw-alias-label-tertiary);background:0 0;border:none;border-radius:8px;padding:0 12px 0 28px;font-size:12px}.qDHVXG_groupSection>.qDHVXG_sessionOverflowButton{margin-top:0}.qDHVXG_sessionOverflowButton:hover{color:var(--dsw-alias-label-secondary);background:0 0}.qDHVXG_empty{color:var(--dsw-alias-label-tertiary);padding:16px 12px;font-size:13px}.qDHVXG_renameInput{box-sizing:border-box;border:1px solid var(--dsw-alias-border-l2);width:100%;height:44px;color:var(--dsw-alias-label-primary);background:0 0;border-radius:22px;outline:none;padding:7px 14px;font-size:14px;font-weight:400;line-height:22px}.qDHVXG_renameInput:disabled{color:var(--dsw-alias-label-dimmed)}.qDHVXG_renameError{color:var(--dsw-alias-state-error-primary);margin-top:8px;font-size:12px;line-height:18px}.qDHVXG_deleteAction:not(:disabled){color:var(--dsw-alias-state-error-primary)}.qDHVXG_deleteStatus{color:var(--dsw-alias-label-secondary);font-size:12px;line-height:18px}@media (prefers-reduced-motion:reduce){.qDHVXG_wide{animation:none}.qDHVXG_search,.qDHVXG_sectionLabel,.qDHVXG_searchSlot,.qDHVXG_searchInput,.qDHVXG_headerActions{transition:none}}";
 		const tagId = "@deepseek-ai/dsh-client-ui-workspace/WorkspaceBrowser.module.css";
 		if (typeof document !== "undefined" && document.querySelector("style[data-plugin-css=" + JSON.stringify(tagId) + "]") === null) {
@@ -1399,6 +1014,8 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			"workspaceDropAfter": "qDHVXG_workspaceDropAfter",
 			"workspaceDropBefore": "qDHVXG_workspaceDropBefore"
 		};
+		//#endregion
+		//#region lib/types/client/WorkspaceBrowser.js
 		/**
 		* The workspace/session browsing region filling the sidebar shell's
 		* `sidebar.workspaces` hole: section header (title + view options + add
@@ -2057,7 +1674,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 					sessionId: currentBlankSessionId,
 					accountKey: currentBlankAccount
 				};
-				for (const accountKey of /* @__PURE__ */ new Set([currentBlankAccount, FLAT_SESSION_ORDER_KEY])) {
+				for (const accountKey of new Set([currentBlankAccount, FLAT_SESSION_ORDER_KEY])) {
 					const previous = sessionOrderByAccount[accountKey] ?? [];
 					actions.setSessionOrder(accountKey, [currentBlankSessionId, ...previous.filter((id) => id !== currentBlankSessionId)]);
 				}
@@ -2589,150 +2206,233 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			});
 		}
 		//#endregion
-		//#region src/client/NativeWorkspaceSidebar.tsx
-		function nativeWorkspaceBridgeOf(value = window.dshNativeWorkspaces) {
-			return isNativeWorkspaceBridge(value) ? value : void 0;
-		}
-		const REFRESH_INTERVAL_MS = 6e4;
+		//#region lib/types/client/locales.js
 		/**
-		* The sidebar region rendered by the STOCK WorkspaceBrowser, vendored verbatim
-		* from @deepseek-ai/dsh-client-ui-workspace so the result stays pixel-identical
-		* to an ordinary browser session. Cross-server workspaces enter through the
-		* same two framework hooks the component already consumes: this wrapper merges
-		* the Companion snapshot into the session/workspace states under synthetic
-		* remote:<hostId>:<id> ids, and intercepts the few row actions that would
-		* otherwise mutate another computer — those navigate DSH Native to that server.
+		* `workspace` namespace dictionaries: the browsing region (section header,
+		* search, tree rows, dialogs) and the pick/add flow. Runtime failure
+		* messages (wire error strings) pass through untranslated by policy.
 		*/
-		function NativeWorkspaceSidebar(props) {
-			const { bridge, useSessions: useLocalSessions, useWorkspaces: useLocalWorkspaces, startSession, open, ...rest } = props;
-			const currentOrigin = window.location.origin;
-			const [snapshot, setSnapshot] = (0, react.useState)(null);
-			const snapshotRef = (0, react.useRef)(null);
-			snapshotRef.current = snapshot;
-			const load = (0, react.useCallback)(async (refresh) => {
-				try {
-					const next = refresh ? await bridge.refresh() : await bridge.getSnapshot();
-					setSnapshot(next);
-				} catch (cause) {
-					console.warn("[dsh-companion] native workspace snapshot unavailable:", cause instanceof Error ? cause.message : cause);
-				}
-			}, [bridge]);
-			(0, react.useEffect)(() => {
-				load(false).then(() => load(true));
-				const timer = window.setInterval(() => {
-					if (document.visibilityState === "visible") load(true);
-				}, REFRESH_INTERVAL_MS);
-				return () => window.clearInterval(timer);
-			}, [load]);
-			const sessionsCache = (0, react.useRef)(null);
-			const mergedSessions = (0, react.useCallback)((local) => {
-				const cached = sessionsCache.current;
-				if (cached !== null && cached.src === local && cached.snap === snapshotRef.current && cached.out !== null) return cached.out;
-				const out = mergedSessionList(local, snapshotRef.current, currentOrigin);
-				sessionsCache.current = {
-					src: local,
-					snap: snapshotRef.current,
-					out
-				};
-				return out;
-			}, [currentOrigin]);
-			const workspacesCache = (0, react.useRef)(null);
-			const mergedWorkspaces = (0, react.useCallback)((local) => {
-				const cached = workspacesCache.current;
-				if (cached !== null && cached.src === local && cached.snap === snapshotRef.current && cached.out !== null) return cached.out;
-				const out = mergedWorkspaceList(local, snapshotRef.current, currentOrigin);
-				workspacesCache.current = {
-					src: local,
-					snap: snapshotRef.current,
-					out
-				};
-				return out;
-			}, [currentOrigin]);
-			const useMergedSessions = (0, react.useCallback)((selector) => useLocalSessions((local) => selector(mergedSessions(local))), [mergedSessions, useLocalSessions]);
-			const useMergedWorkspaces = (0, react.useCallback)((selector) => useLocalWorkspaces((local) => selector(mergedWorkspaces(local))), [mergedWorkspaces, useLocalWorkspaces]);
-			const wrappedStartSession = (0, react.useCallback)((workspaceId) => {
-				const remote = workspaceId === void 0 ? void 0 : parseRemoteId(workspaceId);
-				if (remote) bridge.connect(remote.hostId);
-				else startSession(workspaceId);
-			}, [bridge, startSession]);
-			const wrappedOpen = (0, react.useCallback)((sessionId) => {
-				const remote = parseRemoteId(sessionId);
-				if (remote) bridge.connect(remote.hostId);
-				else open(sessionId);
-			}, [bridge, open]);
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsx)(WorkspaceBrowser, {
-				...rest,
-				useSessions: useMergedSessions,
-				useWorkspaces: useMergedWorkspaces,
-				startSession: wrappedStartSession,
-				open: wrappedOpen
-			});
-		}
-		function registerNativeWorkspaceSidebar(ctx) {
-			const bridge = nativeWorkspaceBridgeOf();
-			if (bridge === void 0) return;
-			const client = ctx;
+		/** Simplified Chinese dictionary (the key-set source of truth). */
+		const zh = {
+			"group.ungrouped": "未分组",
+			"session.new": "新会话",
+			"section.workspaces": "工作区",
+			"section.sessions": "会话",
+			"viewOptions.label": "视图选项",
+			"groupBy.label": "分组方式",
+			"groupBy.workspace": "按工作区",
+			"groupBy.flat": "单列表",
+			"orderBy.label": "排序方式",
+			"orderBy.manual": "手动排序",
+			"orderBy.updated": "最近更新",
+			"sessions.expand": "展开其余 {n} 个会话",
+			"sessions.collapse": "收起",
+			"empty.none": "暂无会话",
+			"empty.noMatches": "无匹配结果",
+			"workspace.add": "添加工作区",
+			"search.sessions.aria": "搜索会话",
+			"search.placeholder": "搜索会话…",
+			"search.clear": "清除搜索",
+			"search.results.aria": "搜索结果",
+			"search.pending": "正在搜索会话历史…",
+			"search.unavailable": "内容搜索暂不可用，仅显示名称匹配。",
+			"search.noMatches": "无匹配会话",
+			"search.hasMore": "仅显示前 {n} 条结果，请缩小搜索范围。",
+			"menu.addWorkspace": "添加工作区…",
+			"picker.loading": "正在加载工作区…",
+			"conflict.named": "已存在名为“{name}”的工作区。",
+			"folderError.title": "无法打开文件夹",
+			"folderError.retry": "重新选择",
+			"rename": "重命名",
+			"rename.workspace.title": "重命名工作区",
+			"rename.session.title": "重命名会话",
+			"field.workspaceName": "工作区名称",
+			"field.sessionName": "会话名称",
+			"delete.workspace": "删除工作区",
+			"delete.desc": "将把“{name}”从工作区列表中移除。文件夹与会话记录会保留，其会话将显示在“未分组”下。",
+			"delete.pending": "正在删除工作区…",
+			"menu.fork": "分叉会话",
+			"menu.archiveSession": "归档会话",
+			"sessions.count.one": "{n} 个会话",
+			"sessions.count.other": "{n} 个会话",
+			"actions.workspace.aria": "工作区“{name}”的操作",
+			"actions.session.aria": "会话“{name}”的操作",
+			"actions.newSession.aria": "在“{name}”中新建会话",
+			"status.running": "进行中",
+			"status.subagentsRunning.one": "{n} 个子代理运行中",
+			"status.subagentsRunning.other": "{n} 个子代理运行中",
+			"status.idle": "空闲",
+			"status.waitingApproval": "等待审批",
+			"status.planReview": "计划待审",
+			"status.waitingAnswer": "等待回答",
+			"status.completed": "已完成",
+			"hover.created": "创建于 {time}",
+			"hover.copied": "已复制",
+			"date.ymd": "{y}年{m}月{d}日",
+			"time.now": "刚刚",
+			"time.minutes": "{n}分钟",
+			"time.hours": "{n}小时",
+			"time.days": "{n}天",
+			"time.months": "{n}个月",
+			"time.years": "{n}年",
+			"time.ago": "{t}前"
+		};
+		/** English dictionary, checked complete against the zh key set. */
+		const en = {
+			"group.ungrouped": "Ungrouped",
+			"session.new": "New Session",
+			"section.workspaces": "Workspaces",
+			"section.sessions": "Sessions",
+			"viewOptions.label": "View options",
+			"groupBy.label": "Group by",
+			"groupBy.workspace": "WorkSpace",
+			"groupBy.flat": "In one list",
+			"orderBy.label": "Order by",
+			"orderBy.manual": "Manual",
+			"orderBy.updated": "Last updated",
+			"sessions.expand": "Show {n} more sessions",
+			"sessions.collapse": "Show less",
+			"empty.none": "No sessions yet",
+			"empty.noMatches": "No matches",
+			"workspace.add": "Add workspace",
+			"search.sessions.aria": "Search sessions",
+			"search.placeholder": "Search sessions...",
+			"search.clear": "Clear search",
+			"search.results.aria": "Search results",
+			"search.pending": "Searching session history…",
+			"search.unavailable": "Content search is temporarily unavailable. Showing name matches.",
+			"search.noMatches": "No matching sessions",
+			"search.hasMore": "Showing the first {n} results. Narrow your search.",
+			"menu.addWorkspace": "Add workspace…",
+			"picker.loading": "Loading workspaces…",
+			"conflict.named": "A workspace named “{name}” already exists.",
+			"folderError.title": "Couldn’t open folder",
+			"folderError.retry": "Choose again",
+			"rename": "Rename",
+			"rename.workspace.title": "Rename workspace",
+			"rename.session.title": "Rename session",
+			"field.workspaceName": "Workspace name",
+			"field.sessionName": "Session name",
+			"delete.workspace": "Delete workspace",
+			"delete.desc": "This removes “{name}” from the workspace list. The folder and session logs will be kept. Its sessions will appear under Ungrouped.",
+			"delete.pending": "Deleting workspace…",
+			"menu.fork": "Fork session",
+			"menu.archiveSession": "Archive session",
+			"sessions.count.one": "{n} session",
+			"sessions.count.other": "{n} sessions",
+			"actions.workspace.aria": "Workspace actions for {name}",
+			"actions.session.aria": "Session actions for {name}",
+			"actions.newSession.aria": "New session in {name}",
+			"status.running": "Running",
+			"status.subagentsRunning.one": "{n} subagent running",
+			"status.subagentsRunning.other": "{n} subagents running",
+			"status.idle": "Idle",
+			"status.waitingApproval": "Waiting for approval",
+			"status.planReview": "Plan awaiting review",
+			"status.waitingAnswer": "Waiting for answer",
+			"status.completed": "Completed",
+			"hover.created": "Created {time}",
+			"hover.copied": "Copied",
+			"date.ymd": "{y}-{m}-{d}",
+			"time.now": "now",
+			"time.minutes": "{n}min",
+			"time.hours": "{n}h",
+			"time.days": "{n}d",
+			"time.months": "{n}mo",
+			"time.years": "{n}y",
+			"time.ago": "{t} ago"
+		};
+		//#endregion
+		//#region lib/types/client/index.js
+		/** Dictionary namespace owned by this plugin. */
+		const NS = "workspace";
+		/**
+		* Required services (cordis fiber inject). The target slots are declared by
+		* the ui-sidebar / ui-conversation applies, whose activation order relative
+		* to this one is NOT constrained: dsh.client.inject edges are informational
+		* (loading/prefetch metadata, never apply sequencing) and neither owner
+		* provides a waitable service. apply therefore depends on each slot
+		* declaration through `slots.inject()` instead of assuming order.
+		*/
+		const inject = [
+			"slots",
+			"sessions",
+			"workspaces",
+			"locale",
+			"connection"
+		];
+		/**
+		* Register the browser and picker once their slot declarations are on the
+		* ledger. Inject factories return plain callbacks; data reads use the
+		* framework's global hooks.
+		* @param ctx - client root context.
+		*/
+		function apply(ctx) {
+			const hostDescription = ctx.get("connection").hostDescription;
+			ctx.effect(() => ctx.locale.register(NS, {
+				zh,
+				en
+			}), "ui-workspace: dictionaries");
+			const searchSessions = async (query, signal) => {
+				const result = await ctx.sessions.search(query, signal);
+				if (!result.ok) throw new Error(result.error.message);
+				return result.value;
+			};
 			const flowSource = (hole) => ({
-				getSnapshot: () => client.slots.entries(hole).length > 0,
-				subscribe: (listener) => client.slots.subscribe(hole, listener)
+				getSnapshot: () => ctx.slots.entries(hole).length > 0,
+				subscribe: (listener) => ctx.slots.subscribe(hole, listener)
 			});
 			const browserFlowSource = flowSource("sidebar.workspaces.directoryFlow");
-			let hostDescription;
-			try {
-				hostDescription = client.get("connection")?.hostDescription;
-			} catch {
-				hostDescription = void 0;
-			}
+			const pickerFlowSource = flowSource("conversation.hero.workspace.directoryFlow");
 			const browserInjected = () => ({
-				bridge,
 				startSession: (workspaceId) => {
-					client.workspaces.startSession(workspaceId);
+					ctx.workspaces.startSession(workspaceId);
 				},
 				open: (sessionId) => {
-					client.sessions.open(sessionId);
+					ctx.sessions.open(sessionId);
 				},
-				searchSessions: async (query, signal) => {
-					const result = await client.sessions.search(query, signal);
-					if (!result.ok) throw new Error(result.error?.message ?? "session search failed");
-					return result.value;
-				},
-				searchResultLimit: client.sessions.searchResultLimit,
+				searchSessions,
+				searchResultLimit: ctx.sessions.searchResultLimit,
 				renameSession: async (sessionId, title) => {
-					const session = client.sessions.binding(sessionId)?.session;
+					const session = ctx.sessions.binding(sessionId)?.session;
 					if (session === void 0) throw new Error(`unknown session "${sessionId}"`);
 					const result = await session.rename(title);
-					if (!result.ok) throw new Error(result.error?.message ?? "rename failed");
+					if (!result.ok) throw new Error(result.error.message);
 				},
 				forkSession: (sessionId) => {
-					client.sessions.fork({
+					ctx.sessions.fork({
 						sessionId,
 						increaseTitle: true
 					}).then((childId) => {
-						client.sessions.open(childId);
+						ctx.sessions.open(childId);
 					}).catch(() => {});
 				},
 				renameWorkspace: async (workspaceId, title) => {
-					await client.workspaces.rename(workspaceId, title);
+					await ctx.workspaces.rename(workspaceId, title);
 				},
 				deleteWorkspace: async (workspaceId) => {
-					await client.workspaces.delete(workspaceId);
+					await ctx.workspaces.delete(workspaceId);
 				},
 				insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
-					await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId);
+					await ctx.workspaces.insertBefore(workspaceId, beforeWorkspaceId);
 				},
 				archiveSession: async (sessionId) => {
-					await client.workspaces.archiveSession(sessionId);
+					await ctx.workspaces.archiveSession(sessionId);
 				},
 				insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
-					await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
+					await ctx.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
 				},
-				createWorkspace: (input) => client.workspaces.create(input),
+				createWorkspace: (input) => ctx.workspaces.create(input),
 				hooks: {
 					directoryFlow: browserFlowSource,
 					hostDescription
 				}
 			});
-			ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
+			const pickerInjected = () => ({
+				createWorkspace: (input) => ctx.workspaces.create(input),
+				hooks: { directoryFlow: pickerFlowSource }
+			});
+			ctx.slots.inject("sidebar.workspaces", () => ctx.slots.register({
 				name: "sidebar.workspaces",
 				children: { "sidebar.workspaces.directoryFlow": {
 					kind: "single",
@@ -2740,181 +2440,19 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				} },
 				store: createWorkspaceViewStore(),
 				inject: browserInjected,
-				priority: -1,
-				locale: "workspace"
-			}, NativeWorkspaceSidebar));
+				locale: NS
+			}, WorkspaceBrowser));
+			ctx.slots.inject("conversation.hero.workspace", () => ctx.slots.register({
+				name: "conversation.hero.workspace",
+				children: { "conversation.hero.workspace.directoryFlow": {
+					kind: "single",
+					scope: "root"
+				} },
+				inject: pickerInjected,
+				locale: NS
+			}, WorkspacePicker));
 		}
 		//#endregion
-		//#region src/client/index.tsx
-		const PLUGIN_ID = "dsh-companion";
-		const NS = "companion-notifications";
-		const STYLE_ID = "dsh-companion/settings";
-		const OPTIONS = [
-			{
-				key: "completed",
-				label: "Completed turns",
-				description: "Show an alert when a turn completes successfully."
-			},
-			{
-				key: "blocked",
-				label: "Blocked agents",
-				description: "Show an alert when an agent reports that it is blocked."
-			},
-			{
-				key: "errors",
-				label: "Failures",
-				description: "Show alerts for failed turns and live agent errors."
-			},
-			{
-				key: "maxTokens",
-				label: "Maximum tokens",
-				description: "Show an alert when a turn reaches its output-token limit."
-			},
-			{
-				key: "aborted",
-				label: "Aborted turns",
-				description: "Show an alert when a turn is cancelled or aborted."
-			},
-			{
-				key: "questions",
-				label: "Questions",
-				description: "Show an alert when ask_user_question needs an answer."
-			},
-			{
-				key: "approvals",
-				label: "Approvals",
-				description: "Show an alert when a tool action needs approval."
-			},
-			{
-				key: "subagents",
-				label: "Subagent sessions",
-				description: "Include enabled alerts from subagent sessions."
-			}
-		];
-		const inject = [
-			"slots",
-			"settingsScope",
-			"betterSidebar",
-			"sessions",
-			"workspaces"
-		];
-		function decodeSettings(value) {
-			if (typeof value !== "object" || value === null) return void 0;
-			const item = value;
-			if (OPTIONS.some((option) => typeof item[option.key] !== "boolean")) return void 0;
-			return item;
-		}
-		function installStyles() {
-			document.querySelector(`style[data-plugin-css="${STYLE_ID}"]`)?.remove();
-			const tag = document.createElement("style");
-			tag.dataset.plugin = PLUGIN_ID;
-			tag.dataset.pluginCss = STYLE_ID;
-			tag.textContent = `
-    .dsc-card{box-sizing:border-box;max-width:720px;color:var(--dsw-alias-label-primary);list-style:none;border:1px solid var(--dsw-alias-border-l2);border-radius:16px;overflow:hidden;background:var(--dsw-alias-bg-elevated,transparent)}
-    .dsc-head{padding:20px 22px 14px}.dsc-title{font-size:16px;line-height:24px;font-weight:600}.dsc-description{margin-top:4px;color:var(--dsw-alias-label-tertiary);font-size:13px;line-height:20px}
-    .dsc-options{border-top:1px solid var(--dsw-alias-border-l2)}.dsc-row{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:14px 22px}.dsc-row+.dsc-row{border-top:1px solid var(--dsw-alias-border-l2)}
-    .dsc-copy{min-width:0}.dsc-label{font-size:14px;line-height:21px;font-weight:500}.dsc-help{margin-top:2px;color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px}
-    .dsc-toggle{width:42px;height:24px;flex:none;appearance:none;border:0;border-radius:999px;background:var(--dsw-alias-interactive-bg-disabled,#777);padding:2px;cursor:pointer;transition:background .15s ease}.dsc-toggle:checked{background:var(--dsw-alias-accent-primary,#4c7dff)}.dsc-toggle:before{content:'';display:block;width:20px;height:20px;border-radius:50%;background:#fff;transition:transform .15s ease;box-shadow:0 1px 3px #0004}.dsc-toggle:checked:before{transform:translateX(18px)}.dsc-toggle:disabled{cursor:not-allowed;opacity:.5}
-    .dsc-status{padding:16px 22px;color:var(--dsw-alias-label-tertiary);font-size:13px}.dsc-error{color:var(--dsw-alias-label-danger,#d44)}
-    .dsc-footer{display:flex;align-items:center;justify-content:space-between;gap:16px;border-top:1px solid var(--dsw-alias-border-l2);padding:12px 22px}.dsc-reset{border:1px solid var(--dsw-alias-border-l2);border-radius:9px;background:transparent;color:inherit;font:inherit;font-size:13px;padding:6px 11px;cursor:pointer}.dsc-reset:hover:not(:disabled){background:var(--dsw-alias-interactive-bg-hover)}.dsc-reset:disabled{cursor:not-allowed;opacity:.5}
-  `;
-			document.head.append(tag);
-			return () => tag.remove();
-		}
-		function SettingsCard({ settings }) {
-			const snapshot = (0, react.useSyncExternalStore)((listener) => settings.subscribe(listener), () => settings.getSnapshot(), () => settings.getSnapshot());
-			const [busy, setBusy] = (0, react.useState)();
-			const [error, setError] = (0, react.useState)();
-			const update = async (key, value) => {
-				setBusy(key);
-				setError(void 0);
-				try {
-					await settings.set(key, value);
-				} catch (cause) {
-					setError(cause instanceof Error ? cause.message : String(cause));
-				} finally {
-					setBusy(void 0);
-				}
-			};
-			const reset = async () => {
-				setBusy("reset");
-				setError(void 0);
-				try {
-					for (const option of OPTIONS) await settings.unset(option.key);
-				} catch (cause) {
-					setError(cause instanceof Error ? cause.message : String(cause));
-				} finally {
-					setBusy(void 0);
-				}
-			};
-			return /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("li", {
-				className: "dsc-card",
-				children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					className: "dsc-head",
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: "dsc-title",
-						children: "DSH Companion notifications"
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-						className: "dsc-description",
-						children: "Choose which agent events become native operating-system notifications."
-					})]
-				}), snapshot.status === "ready" && snapshot.value ? /* @__PURE__ */ (0, react_jsx_runtime.jsxs)(react_jsx_runtime.Fragment, { children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					className: "dsc-options",
-					children: OPTIONS.map((option) => /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("label", {
-						className: "dsc-row",
-						children: [/* @__PURE__ */ (0, react_jsx_runtime.jsxs)("span", {
-							className: "dsc-copy",
-							children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-								className: "dsc-label",
-								children: option.label
-							}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-								className: "dsc-help",
-								children: option.description
-							})]
-						}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("input", {
-							className: "dsc-toggle",
-							type: "checkbox",
-							checked: snapshot.value[option.key],
-							disabled: !snapshot.writable || busy !== void 0,
-							onChange: (event) => void update(option.key, event.currentTarget.checked)
-						})]
-					}, option.key))
-				}), /* @__PURE__ */ (0, react_jsx_runtime.jsxs)("div", {
-					className: "dsc-footer",
-					children: [/* @__PURE__ */ (0, react_jsx_runtime.jsx)("span", {
-						className: error ? "dsc-status dsc-error" : "dsc-status",
-						children: error ?? (snapshot.writable ? "Changes apply immediately." : "Settings are read-only in this runtime.")
-					}), /* @__PURE__ */ (0, react_jsx_runtime.jsx)("button", {
-						className: "dsc-reset",
-						type: "button",
-						disabled: !snapshot.writable || busy !== void 0,
-						onClick: () => void reset(),
-						children: "Reset defaults"
-					})]
-				})] }) : /* @__PURE__ */ (0, react_jsx_runtime.jsx)("div", {
-					className: "dsc-status",
-					children: snapshot.status === "loading" ? "Loading notification settings…" : "The companion settings namespace is unavailable."
-				})]
-			});
-		}
-		function apply(ctx) {
-			ctx.effect(installStyles, "dsh-companion: settings styles");
-			registerImagePreviewTab(ctx);
-			registerNativeWorkspaceSidebar(ctx);
-			ctx.slots.inject("settings.plugin.item", () => ctx.slots.register({
-				name: "settings.plugin.item",
-				key: NS,
-				inject: () => ({ settings: ctx.settingsScope.bind({
-					namespace: NS,
-					decode: decodeSettings
-				}) })
-			}, SettingsCard));
-		}
-		//#endregion
-		exports.apply = apply;
-		exports.inject = inject;
-		return module.exports;
-	}
-});
+		
 
-//# sourceMappingURL=client.js.map
+export { WorkspaceBrowser, createWorkspaceViewStore };
