@@ -17,6 +17,7 @@ interface SlotRegistryFace {
   entries(hole: string): readonly unknown[]
   subscribe(hole: string, listener: () => void): () => void
   register(options: Record<string, unknown>, component: unknown): unknown
+  renderSlot(name: string, owner: Record<string, unknown>): unknown
   inject(hole: string, factory: () => () => void): () => void
 }
 
@@ -43,6 +44,7 @@ type CompanionClientContext = Context & {
 
 export interface InjectedFace {
   bridge: NativeWorkspaceBridge
+  renderSlot(name: string, owner: Record<string, unknown>): unknown
   startSession(workspaceId?: string): void
   open(sessionId: string): void
   searchSessions(query: string, signal: AbortSignal): Promise<{ items: unknown[]; hasMore: boolean }>
@@ -201,6 +203,7 @@ export function registerNativeWorkspaceSidebar(ctx: Context): void {
 
     const browserInjected = (): InjectedFace => ({
       bridge,
+      renderSlot: () => null,
       startSession: (workspaceId) => {
         client.workspaces.startSession(workspaceId)
       },

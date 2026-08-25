@@ -2686,6 +2686,7 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 				}
 				const browserInjected = () => ({
 					bridge,
+					renderSlot: () => null,
 					startSession: (workspaceId) => {
 						client.workspaces.startSession(workspaceId);
 					},
