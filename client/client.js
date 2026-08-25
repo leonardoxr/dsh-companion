@@ -2734,10 +2734,6 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			});
 			ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
 				name: "sidebar.workspaces",
-				children: { "sidebar.workspaces.directoryFlow": {
-					kind: "single",
-					scope: "root"
-				} },
 				store: createWorkspaceViewStore(),
 				inject: browserInjected,
 				priority: -1,

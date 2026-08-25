@@ -246,14 +246,10 @@ export function registerNativeWorkspaceSidebar(ctx: Context): void {
     },
   })
 
-  // Mirrors the stock ui-workspace registration one-for-one (same child hole
-  // declaration, store seat, and locale namespace); the lower priority makes
-  // this entry the shadowing winner while ui-workspace stays dormant.
+  // Reuse the stock directoryFlow declaration; duplicate child declarations
+  // are rejected when the native bridge is present alongside ui-workspace.
   ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
     name: 'sidebar.workspaces',
-    children: {
-      'sidebar.workspaces.directoryFlow': { kind: 'single', scope: 'root' },
-    },
     store: createWorkspaceViewStore(),
     inject: browserInjected,
     priority: -1,
