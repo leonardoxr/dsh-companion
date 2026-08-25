@@ -2669,76 +2669,79 @@ window.__ModuleLoader__.load({ id: "dsh-companion", factory: (require) => {
 			});
 		}
 		function registerNativeWorkspaceSidebar(ctx) {
-			const bridge = nativeWorkspaceBridgeOf();
-			if (bridge === void 0) return;
-			const client = ctx;
-			const flowSource = (hole) => ({
-				getSnapshot: () => client.slots.entries(hole).length > 0,
-				subscribe: (listener) => client.slots.subscribe(hole, listener)
-			});
-			const browserFlowSource = flowSource("sidebar.workspaces.directoryFlow");
-			let hostDescription;
-			try {
-				hostDescription = client.get("connection")?.hostDescription;
-			} catch {
-				hostDescription = void 0;
-			}
-			const browserInjected = () => ({
-				bridge,
-				startSession: (workspaceId) => {
-					client.workspaces.startSession(workspaceId);
-				},
-				open: (sessionId) => {
-					client.sessions.open(sessionId);
-				},
-				searchSessions: async (query, signal) => {
-					const result = await client.sessions.search(query, signal);
-					if (!result.ok) throw new Error(result.error?.message ?? "session search failed");
-					return result.value;
-				},
-				searchResultLimit: client.sessions.searchResultLimit,
-				renameSession: async (sessionId, title) => {
-					const session = client.sessions.binding(sessionId)?.session;
-					if (session === void 0) throw new Error(`unknown session "${sessionId}"`);
-					const result = await session.rename(title);
-					if (!result.ok) throw new Error(result.error?.message ?? "rename failed");
-				},
-				forkSession: (sessionId) => {
-					client.sessions.fork({
-						sessionId,
-						increaseTitle: true
-					}).then((childId) => {
-						client.sessions.open(childId);
-					}).catch(() => {});
-				},
-				renameWorkspace: async (workspaceId, title) => {
-					await client.workspaces.rename(workspaceId, title);
-				},
-				deleteWorkspace: async (workspaceId) => {
-					await client.workspaces.delete(workspaceId);
-				},
-				insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
-					await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId);
-				},
-				archiveSession: async (sessionId) => {
-					await client.workspaces.archiveSession(sessionId);
-				},
-				insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
-					await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
-				},
-				createWorkspace: (input) => client.workspaces.create(input),
-				hooks: {
-					directoryFlow: browserFlowSource,
-					hostDescription
+			ctx.effect(() => {
+				const bridge = nativeWorkspaceBridgeOf();
+				if (bridge === void 0) return () => {};
+				const client = ctx;
+				const flowSource = (hole) => ({
+					getSnapshot: () => client.slots.entries(hole).length > 0,
+					subscribe: (listener) => client.slots.subscribe(hole, listener)
+				});
+				const browserFlowSource = flowSource("sidebar.workspaces.directoryFlow");
+				let hostDescription;
+				try {
+					hostDescription = client.get("connection")?.hostDescription;
+				} catch {
+					hostDescription = void 0;
 				}
-			});
-			ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
-				name: "sidebar.workspaces",
-				store: createWorkspaceViewStore(),
-				inject: browserInjected,
-				priority: -1,
-				locale: "workspace"
-			}, NativeWorkspaceSidebar));
+				const browserInjected = () => ({
+					bridge,
+					startSession: (workspaceId) => {
+						client.workspaces.startSession(workspaceId);
+					},
+					open: (sessionId) => {
+						client.sessions.open(sessionId);
+					},
+					searchSessions: async (query, signal) => {
+						const result = await client.sessions.search(query, signal);
+						if (!result.ok) throw new Error(result.error?.message ?? "session search failed");
+						return result.value;
+					},
+					searchResultLimit: client.sessions.searchResultLimit,
+					renameSession: async (sessionId, title) => {
+						const session = client.sessions.binding(sessionId)?.session;
+						if (session === void 0) throw new Error(`unknown session "${sessionId}"`);
+						const result = await session.rename(title);
+						if (!result.ok) throw new Error(result.error?.message ?? "rename failed");
+					},
+					forkSession: (sessionId) => {
+						client.sessions.fork({
+							sessionId,
+							increaseTitle: true
+						}).then((childId) => {
+							client.sessions.open(childId);
+						}).catch(() => {});
+					},
+					renameWorkspace: async (workspaceId, title) => {
+						await client.workspaces.rename(workspaceId, title);
+					},
+					deleteWorkspace: async (workspaceId) => {
+						await client.workspaces.delete(workspaceId);
+					},
+					insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
+						await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId);
+					},
+					archiveSession: async (sessionId) => {
+						await client.workspaces.archiveSession(sessionId);
+					},
+					insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
+						await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId);
+					},
+					createWorkspace: (input) => client.workspaces.create(input),
+					hooks: {
+						directoryFlow: browserFlowSource,
+						hostDescription
+					}
+				});
+				ctx.slots.inject("sidebar.workspaces", () => client.slots.register({
+					name: "sidebar.workspaces",
+					store: createWorkspaceViewStore(),
+					inject: browserInjected,
+					priority: -1,
+					locale: "workspace"
+				}, NativeWorkspaceSidebar));
+				return () => {};
+			}, "dsh-companion: native workspace sidebar");
 		}
 		//#endregion
 		//#region src/client/index.tsx

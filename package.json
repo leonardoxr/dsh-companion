@@ -1,6 +1,6 @@
 {
   "name": "dsh-companion",
-  "version": "0.4.3",
+  "version": "0.4.4",
   "description": "Read-only workspace and session JSON API for DeepSeek Harness clients",
   "publishConfig": {
     "access": "public"

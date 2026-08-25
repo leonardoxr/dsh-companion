@@ -180,79 +180,82 @@ export function NativeWorkspaceSidebar(props: NativeWorkspaceSidebarProps) {
 }
 
 export function registerNativeWorkspaceSidebar(ctx: Context): void {
-  const bridge = nativeWorkspaceBridgeOf()
-  if (bridge === undefined) return
-  const client = ctx as CompanionClientContext
+  ctx.effect(() => {
+    const bridge = nativeWorkspaceBridgeOf()
+    if (bridge === undefined) return () => {}
+    const client = ctx as CompanionClientContext
 
-  // Same occupancy source the stock registration uses for its child hole, so
-  // the composed directory-picker keeps filling the Add workspace flow.
-  const flowSource = (hole: string) => ({
-    getSnapshot: () => client.slots.entries(hole).length > 0,
-    subscribe: (listener: () => void) => client.slots.subscribe(hole, listener),
-  })
-  const browserFlowSource = flowSource('sidebar.workspaces.directoryFlow')
-  let hostDescription: unknown
-  try {
-    hostDescription = client.get('connection')?.hostDescription
-  } catch {
-    hostDescription = undefined
-  }
+    // Same occupancy source the stock registration uses for its child hole, so
+    // the composed directory-picker keeps filling the Add workspace flow.
+    const flowSource = (hole: string) => ({
+      getSnapshot: () => client.slots.entries(hole).length > 0,
+      subscribe: (listener: () => void) => client.slots.subscribe(hole, listener),
+    })
+    const browserFlowSource = flowSource('sidebar.workspaces.directoryFlow')
+    let hostDescription: unknown
+    try {
+      hostDescription = client.get('connection')?.hostDescription
+    } catch {
+      hostDescription = undefined
+    }
 
-  const browserInjected = (): InjectedFace => ({
-    bridge,
-    startSession: (workspaceId) => {
-      client.workspaces.startSession(workspaceId)
-    },
-    open: (sessionId) => {
-      client.sessions.open(sessionId)
-    },
-    searchSessions: async (query, signal) => {
-      const result = await client.sessions.search(query, signal)
-      if (!result.ok) throw new Error(result.error?.message ?? 'session search failed')
-      return result.value as { items: unknown[]; hasMore: boolean }
-    },
-    searchResultLimit: client.sessions.searchResultLimit,
-    renameSession: async (sessionId, title) => {
-      const binding = client.sessions.binding(sessionId)
-      const session = binding?.session
-      if (session === undefined) throw new Error(`unknown session "${sessionId}"`)
-      const result = await session.rename(title)
-      if (!result.ok) throw new Error(result.error?.message ?? 'rename failed')
-    },
-    forkSession: (sessionId) => {
-      client.sessions.fork({ sessionId, increaseTitle: true }).then((childId) => {
-        client.sessions.open(childId)
-      }).catch(() => {})
-    },
-    renameWorkspace: async (workspaceId, title) => {
-      await client.workspaces.rename(workspaceId, title)
-    },
-    deleteWorkspace: async (workspaceId) => {
-      await client.workspaces.delete(workspaceId)
-    },
-    insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
-      await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId)
-    },
-    archiveSession: async (sessionId) => {
-      await client.workspaces.archiveSession(sessionId)
-    },
-    insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
-      await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
-    },
-    createWorkspace: (input) => client.workspaces.create(input),
-    hooks: {
-      directoryFlow: browserFlowSource,
-      hostDescription,
-    },
-  })
+    const browserInjected = (): InjectedFace => ({
+      bridge,
+      startSession: (workspaceId) => {
+        client.workspaces.startSession(workspaceId)
+      },
+      open: (sessionId) => {
+        client.sessions.open(sessionId)
+      },
+      searchSessions: async (query, signal) => {
+        const result = await client.sessions.search(query, signal)
+        if (!result.ok) throw new Error(result.error?.message ?? 'session search failed')
+        return result.value as { items: unknown[]; hasMore: boolean }
+      },
+      searchResultLimit: client.sessions.searchResultLimit,
+      renameSession: async (sessionId, title) => {
+        const binding = client.sessions.binding(sessionId)
+        const session = binding?.session
+        if (session === undefined) throw new Error(`unknown session "${sessionId}"`)
+        const result = await session.rename(title)
+        if (!result.ok) throw new Error(result.error?.message ?? 'rename failed')
+      },
+      forkSession: (sessionId) => {
+        client.sessions.fork({ sessionId, increaseTitle: true }).then((childId) => {
+          client.sessions.open(childId)
+        }).catch(() => {})
+      },
+      renameWorkspace: async (workspaceId, title) => {
+        await client.workspaces.rename(workspaceId, title)
+      },
+      deleteWorkspace: async (workspaceId) => {
+        await client.workspaces.delete(workspaceId)
+      },
+      insertWorkspaceBefore: async (workspaceId, beforeWorkspaceId) => {
+        await client.workspaces.insertBefore(workspaceId, beforeWorkspaceId)
+      },
+      archiveSession: async (sessionId) => {
+        await client.workspaces.archiveSession(sessionId)
+      },
+      insertSessionBefore: async (workspaceId, sessionId, beforeSessionId) => {
+        await client.workspaces.insertSessionBefore(workspaceId, sessionId, beforeSessionId)
+      },
+      createWorkspace: (input) => client.workspaces.create(input),
+      hooks: {
+        directoryFlow: browserFlowSource,
+        hostDescription,
+      },
+    })
 
-  // Reuse the stock directoryFlow declaration; duplicate child declarations
-  // are rejected when the native bridge is present alongside ui-workspace.
-  ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
-    name: 'sidebar.workspaces',
-    store: createWorkspaceViewStore(),
-    inject: browserInjected,
-    priority: -1,
-    locale: 'workspace',
-  }, NativeWorkspaceSidebar as never))
+    // Reuse the stock directoryFlow declaration; duplicate child declarations
+    // are rejected when the native bridge is present alongside ui-workspace.
+    ctx.slots.inject('sidebar.workspaces', () => client.slots.register({
+      name: 'sidebar.workspaces',
+      store: createWorkspaceViewStore(),
+      inject: browserInjected,
+      priority: -1,
+      locale: 'workspace',
+    }, NativeWorkspaceSidebar as never))
+    return () => {}
+  }, 'dsh-companion: native workspace sidebar')
 }
